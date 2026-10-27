@@ -17,7 +17,16 @@
     opts = opts || {};
     const t = new THREE.CanvasTexture(canvas);
     t.colorSpace = opts.srgb === false ? THREE.NoColorSpace : THREE.SRGBColorSpace;
-    t.anisotropy = 8;
+    // Anisotropic filtering keeps oblique surfaces (screen glass, lens rim,
+    // brushed shell) from smearing; app.js publishes the GPU limit before the
+    // model is built, 8 is a safe fallback for older/standalone contexts.
+    const maxA = (window.DJI && window.DJI.textureAnisotropy) || 8;
+    t.anisotropy = Math.min(maxA, 16);
+    // Trilinear minification + a full mip chain: these maps are viewed at
+    // glancing angles and under bloom/MSAA, plain bilinear aliases badly.
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true;
     if (opts.repeat) {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(opts.repeat[0], opts.repeat[1]);
@@ -58,11 +67,69 @@
     } while (s > 6);
     return s;
   }
+  // Decal / silk-print labels are alphaTest-ed decals: if antialiased glyph
+  // edges keep a low alpha but their RGB is (near) black, the alpha test plus
+  // mip filtering shows a dirty dark fringe. Hard-zero the near-transparent
+  // residue, then bleed glyph colour a few pixels outwards so the GPU never
+  // interpolates black into the letter edge. Does not move or restyle glyphs.
+  function cleanGlyphEdges(ctx, W, H, cutoff) {
+    const TH = Math.max(1, Math.round((cutoff == null ? 0.06 : cutoff) * 255));
+    const img = ctx.getImageData(0, 0, W, H);
+    const d = img.data;
+    const n = W * H;
+    let mask = new Uint8Array(n);
+    for (let p = 0; p < n; p++) {
+      if (d[p * 4 + 3] <= TH) {
+        d[p * 4 + 3] = 0;
+      } else {
+        mask[p] = 1;
+      }
+    }
+    // 3-pass 8-neighbour colour dilation into the transparent moat.
+    for (let pass = 0; pass < 3; pass++) {
+      const next = new Uint8Array(n);
+      next.set(mask);
+      let painted = 0;
+      for (let y = 0; y < H; y++) {
+        const row = y * W;
+        for (let x = 0; x < W; x++) {
+          const p = row + x;
+          if (mask[p]) continue;
+          let r = 0, g = 0, b = 0, c = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            const yy = y + dy;
+            if (yy < 0 || yy >= H) continue;
+            const yrow = yy * W;
+            for (let dx = -1; dx <= 1; dx++) {
+              const xx = x + dx;
+              if (xx < 0 || xx >= W) continue;
+              const q = yrow + xx;
+              if (!mask[q]) continue;
+              r += d[q * 4]; g += d[q * 4 + 1]; b += d[q * 4 + 2]; c++;
+            }
+          }
+          if (!c) continue;
+          d[p * 4] = (r / c) | 0;
+          d[p * 4 + 1] = (g / c) | 0;
+          d[p * 4 + 2] = (b / c) | 0;
+          next[p] = 1;
+          painted++;
+        }
+      }
+      mask = next;
+      if (!painted) break;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
 
   /* ============================================================
      1. Camera preview art used by both displays
      ============================================================ */
-  function drawPreview(ctx, W, H, seed) {
+  function drawPreview(ctx, W, H, seed, scale) {
+    // `scale` is the render-resolution factor vs. the original 512/1024 design
+    // baseline; only hand-written pixel sizes (stars, streak heights) need it,
+    // everything expressed as a W/H ratio scales automatically.
+    const S = scale || 1;
     const R = rng(seed || 7);
     const horizon = H * 0.62;
 
@@ -79,7 +146,7 @@
     for (let i = 0; i < 60; i++) {
       const x = R() * W, y = R() * horizon * 0.62, a = 0.12 + R() * 0.5;
       ctx.fillStyle = 'rgba(190,235,255,' + a.toFixed(2) + ')';
-      ctx.fillRect(x, y, 1.2, 1.2);
+      ctx.fillRect(x, y, 1.2 * S, 1.2 * S);
     }
 
     // sun glow
@@ -99,7 +166,7 @@
     // cloud bands
     for (let i = 0; i < 5; i++) {
       const y = horizon - H * (0.1 + R() * 0.32);
-      const h = 2 + R() * 8;
+      const h = (2 + R() * 8) * S;
       const g = ctx.createLinearGradient(0, y, 0, y + h * 4);
       g.addColorStop(0, 'rgba(255,173,123,' + (0.03 + R() * 0.08).toFixed(2) + ')');
       g.addColorStop(1, 'rgba(255,173,123,0)');
@@ -143,7 +210,7 @@
       const y = horizon + 2 + t * (H - horizon) * 0.8;
       const w = W * (0.035 + t * 0.16) * (0.5 + R());
       ctx.fillStyle = 'rgba(255,166,108,' + (0.16 * (1 - t)).toFixed(3) + ')';
-      ctx.fillRect(sx - w / 2 + (R() - 0.5) * W * 0.03, y, w, 1.2 + t * 2.4);
+      ctx.fillRect(sx - w / 2 + (R() - 0.5) * W * 0.03, y, w, (1.2 + t * 2.4) * S);
     }
     ctx.restore();
 
@@ -181,19 +248,33 @@
     const mono = '"Cascadia Code", Consolas, monospace';
     const sans = '"Segoe UI", Arial, sans-serif';
 
-    // REC
-    ctx.fillStyle = '#ff4d4d';
-    ctx.beginPath();
-    ctx.arc(pad + fs * 0.32, pad + fs * 0.5, fs * 0.28, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '600 ' + fs + 'px ' + mono;
+    // REC badge: dot + label + running timer, laid out from measured text
+    // widths. The old fixed offsets made "REC" and the timer overlap on the
+    // square front screen.
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillText('REC', pad + fs * 0.8, pad + fs * 0.5);
+    const cy = pad + fs * 0.5;
+    const dotR = fs * 0.24;
+    const recFont = '600 ' + Math.round(fs * 0.88) + 'px ' + mono;
+    const timeFont = '400 ' + Math.round(fs * 0.76) + 'px ' + mono;
+    ctx.font = recFont;
+    const recW = ctx.measureText('REC').width;
+    ctx.font = timeFont;
+    const timeW = ctx.measureText('00:12:34').width;
+
+    ctx.fillStyle = '#ff4d4d';
+    ctx.beginPath();
+    ctx.arc(pad + dotR, cy, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    const recX = pad + dotR * 2 + fs * 0.22;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = recFont;
+    ctx.fillText('REC', recX, cy);
+    const timeX = recX + recW + fs * 0.3;
     ctx.fillStyle = 'rgba(255,255,255,.92)';
-    ctx.font = '400 ' + Math.round(fs * 0.92) + 'px ' + mono;
-    ctx.fillText('00:12:34', pad + fs * 2.35, pad + fs * 0.5);
+    ctx.font = timeFont;
+    ctx.fillText('00:12:34', timeX, cy);
+    const leftBound = timeX + timeW + fs * 0.45;
 
     // right: signal + battery
     const bx = W - pad - fs * 2.1;
@@ -208,15 +289,26 @@
     ctx.textAlign = 'right';
     ctx.fillText('03:47', bx - fs * 0.3, pad + fs * 0.55);
 
-    // center: resolution chip
-    const chipW = W * 0.19, chipH = H * 0.085;
+    // center: resolution chip, auto-fitted between the timer and the battery
+    const chipLabel = isFront ? '4K / 60' : '4K · 60FPS';
+    let chipFs = Math.round(H * 0.044);
+    const chipH = H * 0.085;
+    const rightBound = bx - fs * 2.4;
+    const avail = Math.max(fs * 2.2, Math.min(W / 2 - leftBound, rightBound - W / 2) * 2);
+    ctx.font = '600 ' + chipFs + 'px ' + mono;
+    let chipInner = ctx.measureText(chipLabel).width;
+    if (chipInner + chipH * 1.3 > avail) {
+      chipFs = Math.max(10, Math.round(chipFs * avail / (chipInner + chipH * 1.3)));
+      ctx.font = '600 ' + chipFs + 'px ' + mono;
+      chipInner = ctx.measureText(chipLabel).width;
+    }
+    const chipW = Math.min(W * 0.22, avail, Math.max(chipInner + chipH * 1.3, chipH * 1.6));
     ctx.fillStyle = 'rgba(0,0,0,.34)';
     roundRectPath(ctx, W / 2 - chipW / 2, pad + fs * 0.02, chipW, chipH, chipH * 0.24);
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.font = '600 ' + Math.round(H * 0.046) + 'px ' + mono;
-    ctx.fillText(isFront ? '4K / 60' : '4K · 60FPS', W / 2, pad + chipH * 0.52);
+    ctx.fillText(chipLabel, W / 2, pad + chipH * 0.52);
 
     // mode tiny caption
     ctx.fillStyle = 'rgba(255,255,255,.45)';
@@ -289,7 +381,8 @@
     ctx.restore();
   }
 
-  function drawBottomBar(ctx, W, H) {
+  function drawBottomBar(ctx, W, H, scale) {
+    const S = scale || 1;
     const barY = H * 0.8;
     let g = ctx.createLinearGradient(0, barY - H * 0.12, 0, H);
     g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -303,12 +396,17 @@
     const fs = Math.round(H * 0.038);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,255,255,.86)';
     ctx.font = '400 ' + fs + 'px ' + mono;
-    ctx.fillText('1/120', pad, H * 0.9);
+    // left HUD: shutter / ISO / aperture, measured left-to-right so the three
+    // values can never run into each other on the wide rear panel.
+    let hx = pad;
+    ctx.fillStyle = 'rgba(255,255,255,.86)';
+    ctx.fillText('1/120', hx, H * 0.9);
+    hx += ctx.measureText('1/120').width + fs * 0.75;
     ctx.fillStyle = 'rgba(255,255,255,.5)';
-    ctx.fillText('ISO 100', pad + fs * 4.1, H * 0.9);
-    ctx.fillText('F2.8', pad + fs * 8.4, H * 0.9);
+    ctx.fillText('ISO 100', hx, H * 0.9);
+    hx += ctx.measureText('ISO 100').width + fs * 0.75;
+    ctx.fillText('F2.8', hx, H * 0.9);
 
     // record button
     const rx = W - pad - H * 0.11, ry = H * 0.895, rr = H * 0.072;
@@ -332,33 +430,35 @@
       ctx.fillText(m, mx, H * 0.89);
       if (i === 0) {
         ctx.fillStyle = '#4fe3ff';
-        ctx.fillRect(mx - W * 0.024, H * 0.93, W * 0.048, 2);
+        ctx.fillRect(mx - W * 0.024, H * 0.93, W * 0.048, Math.max(2, 2 * S));
       }
     });
 
-    // fov badge
+    // fov badge, kept clear of the record button below/right of it
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,.42)';
     ctx.font = '400 ' + Math.round(fs * 0.86) + 'px ' + mono;
-    ctx.fillText('155° ULTRA WIDE', W - pad - H * 0.17, H * 0.82);
+    ctx.fillText('155° ULTRA WIDE', W - pad, H * 0.755);
     ctx.textAlign = 'left';
   }
 
   function screenRear() {
-    const W = 1024, H = 576;
+    // 2.25" rear touchscreen — 16:9 UI rendered at 1.5x the original 1024x576
+    // canvas so the small HUD text stays legible on high-DPI displays.
+    const W = 1536, H = 864;
     const c = makeCanvas(W, H), ctx = c.getContext('2d');
-    drawPreview(ctx, W, H, 11);
+    drawPreview(ctx, W, H, 11, 1.5);
     drawTopBar(ctx, W, H, false);
     drawFrameGuides(ctx, W, H, 1);
-    drawBottomBar(ctx, W, H);
+    drawBottomBar(ctx, W, H, 1.5);
     return makeTexture(c);
   }
 
   function screenFront() {
     // 1.4" 320×320 square panel — selfie / parameter monitor
-    const W = 512, H = 512;
+    const W = 1024, H = 1024;
     const c = makeCanvas(W, H), ctx = c.getContext('2d');
-    drawPreview(ctx, W, H, 29);
+    drawPreview(ctx, W, H, 29, 2);
     drawTopBar(ctx, W, H, true);
     drawFrameGuides(ctx, W, H, 1.15);
     const g = ctx.createLinearGradient(0, H * 0.8, 0, H);
@@ -641,13 +741,16 @@
   }
 
   function lensCoatingTexture() {
-    const S = 512;
+    // 1024px: the lens is the hero surface of the whole teardown and is
+    // always seen at an oblique angle, so texel density matters here.
+    const S = 1024;
+    const P = S / 512; // stroke/offset scale relative to the old 512 layout
     const c = makeCanvas(S, S), ctx = c.getContext('2d');
     ctx.clearRect(0, 0, S, S);
     const cx = S / 2, cy = S / 2;
 
     // deep glass base
-    const g = ctx.createRadialGradient(cx * 0.86, cy * 0.8, 10, cx, cy, S * 0.5);
+    const g = ctx.createRadialGradient(cx * 0.86, cy * 0.8, 10 * P, cx, cy, S * 0.5);
     g.addColorStop(0, 'rgba(28,44,66,.42)');
     g.addColorStop(0.45, 'rgba(8,17,32,.82)');
     g.addColorStop(0.8, 'rgba(2,6,14,.96)');
@@ -669,17 +772,30 @@
       const hue = hues[i % hues.length] + Math.sin(i * 0.8) * 22;
       const a = 0.05 + 0.08 * Math.abs(Math.sin(i * 0.7));
       ctx.strokeStyle = 'hsla(' + hue + ',95%,62%,' + a.toFixed(3) + ')';
-      ctx.lineWidth = 1 + (i % 4);
+      ctx.lineWidth = (1 + (i % 4)) * P;
       ctx.beginPath();
-      ctx.arc(cx + Math.sin(i) * 12, cy + Math.cos(i * 1.3) * 9, r, i * 0.7, i * 0.7 + Math.PI * 1.25);
+      ctx.arc(cx + Math.sin(i) * 12 * P, cy + Math.cos(i * 1.3) * 9 * P, r, i * 0.7, i * 0.7 + Math.PI * 1.25);
+      ctx.stroke();
+    }
+
+    // secondary, very low-alpha broadband rings: adds coating depth/layering
+    // while keeping the same blue-violet-cyan palette as the primary arcs.
+    for (let i = 0; i < 18; i++) {
+      const r = S * (0.12 + (i / 18) * 0.35);
+      const hue = hues[(i * 3 + 2) % hues.length] + Math.cos(i * 1.1) * 14;
+      const a = 0.022 + 0.026 * Math.abs(Math.cos(i * 0.9));
+      ctx.strokeStyle = 'hsla(' + hue + ',90%,58%,' + a.toFixed(3) + ')';
+      ctx.lineWidth = (2 + (i % 3)) * P;
+      ctx.beginPath();
+      ctx.arc(cx + Math.sin(i * 2.1) * 16 * P, cy + Math.cos(i * 1.7) * 12 * P, r, i * 0.9, i * 0.9 + Math.PI * 1.1);
       ctx.stroke();
     }
 
     // arc highlights
-    for (let i = 0; i < 9; i++) {
-      const r = S * (0.18 + i * 0.032);
-      ctx.strokeStyle = 'rgba(150,235,255,' + (0.035 + i * 0.004).toFixed(3) + ')';
-      ctx.lineWidth = 2.5;
+    for (let i = 0; i < 11; i++) {
+      const r = S * (0.18 + i * 0.027);
+      ctx.strokeStyle = 'rgba(150,235,255,' + (0.035 + i * 0.0035).toFixed(3) + ')';
+      ctx.lineWidth = 2.5 * P;
       ctx.beginPath();
       ctx.arc(cx, cy, r, Math.PI * (1.02 + i * 0.05), Math.PI * (1.55 + i * 0.04));
       ctx.stroke();
@@ -702,7 +818,7 @@
     // inner aperture hints
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = 'rgba(0,0,0,.55)';
-    ctx.lineWidth = 0.8;
+    ctx.lineWidth = 0.8 * P;
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
       ctx.beginPath();
@@ -714,12 +830,13 @@
   }
 
   function apertureTexture() {
-    const S = 512;
+    const S = 1024;
+    const P = S / 512; // stroke scale relative to the old 512 layout
     const c = makeCanvas(S, S), ctx = c.getContext('2d');
     const cx = S / 2, cy = S / 2;
     ctx.clearRect(0, 0, S, S);
 
-    const g = ctx.createRadialGradient(cx, cy, 6, cx, cy, S / 2);
+    const g = ctx.createRadialGradient(cx, cy, 6 * P, cx, cy, S / 2);
     g.addColorStop(0, '#02030a');
     g.addColorStop(0.52, '#050a16');
     g.addColorStop(0.82, '#0b2030');
@@ -740,17 +857,17 @@
       ctx.fillStyle = 'rgba(2,4,8,.92)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(90,140,170,.09)';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 * P;
       ctx.stroke();
     }
     ctx.restore();
 
     // rim reflections
     ctx.strokeStyle = 'rgba(95,190,230,.35)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * P;
     ctx.beginPath(); ctx.arc(cx, cy, S * 0.36, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,180,120,.16)';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 4 * P;
     ctx.beginPath(); ctx.arc(cx, cy, S * 0.25, Math.PI * 0.2, Math.PI * 0.95); ctx.stroke();
     return makeTexture(c);
   }
@@ -782,30 +899,35 @@
     // Stylised lowercase dji wordmark (device silk print)
     ctx.font = '900 148px "Arial Black", Arial, sans-serif';
     ctx.fillText('dji', W / 2, H / 2 + 8);
+    cleanGlyphEdges(ctx, W, H);
     return makeTexture(c);
   }
 
   function actionLogoTexture() {
-    const W = 1024, H = 112;
+    // 2× the original canvas: the silk print is viewed at a shallow grazing
+    // angle where anisotropic filtering still has to keep the glyph edges
+    // crisp.
+    const W = 2048, H = 224;
     const c = makeCanvas(W, H), ctx = c.getContext('2d');
     ctx.clearRect(0, 0, W, H);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    const font = '600 62px "Segoe UI", Arial, sans-serif';
+    const font = '600 124px "Segoe UI", Arial, sans-serif';
     const textA = 'OSMO ACTION ';
     ctx.font = font;
     const wa = ctx.measureText(textA).width;
     const w4 = ctx.measureText('4').width;
-    const spacing = 3;
+    const spacing = 6;
     let x = (W - (wa + w4)) / 2;
     ctx.fillStyle = 'rgba(240,247,252,.9)';
     for (let i = 0; i < textA.length; i++) {
       const ch = textA[i];
-      ctx.fillText(ch, x, H / 2 + 4);
-      x += ctx.measureText(ch).width + (ch === ' ' ? 10 : spacing);
+      ctx.fillText(ch, x, H / 2 + 8);
+      x += ctx.measureText(ch).width + (ch === ' ' ? 20 : spacing);
     }
     ctx.fillStyle = '#ff3b30';
-    ctx.fillText('4', x, H / 2 + 4);
+    ctx.fillText('4', x, H / 2 + 8);
+    cleanGlyphEdges(ctx, W, H);
     return makeTexture(c);
   }
 
@@ -820,6 +942,7 @@
     ctx.textBaseline = 'middle';
     ctx.fillText('Q', W / 2, H * 0.3);
     ctx.fillText('S', W / 2, H * 0.7);
+    cleanGlyphEdges(ctx, W, H);
     return makeTexture(c);
   }
 
@@ -988,6 +1111,180 @@
     return makeTexture(c, { srgb: false, repeat: [2, 1] });
   }
 
+  /* ============================================================
+     7. Micro-detail maps (PBR bump + screen glass overlay)
+     ============================================================ */
+  // Seamless value noise: the lattice wraps on `cells`, so the finished tile
+  // repeats without a visible seam when used with RepeatWrapping.
+  function periodicNoise2D(size, cells, R) {
+    const lattice = new Float32Array(cells * cells);
+    for (let i = 0; i < lattice.length; i++) lattice[i] = R();
+    const out = new Float32Array(size * size);
+    const step = cells / size;
+    for (let y = 0; y < size; y++) {
+      const fy = y * step;
+      const y0 = Math.floor(fy);
+      const ty = fy - y0;
+      const sy = ty * ty * (3 - 2 * ty);
+      const y0i = y0 % cells, y1i = (y0 + 1) % cells;
+      const r0 = y0i * cells, r1 = y1i * cells;
+      for (let x = 0; x < size; x++) {
+        const fx = x * step;
+        const x0 = Math.floor(fx);
+        const tx = fx - x0;
+        const sx = tx * tx * (3 - 2 * tx);
+        const x0i = x0 % cells, x1i = (x0 + 1) % cells;
+        const a = lattice[r0 + x0i], b = lattice[r0 + x1i];
+        const c2 = lattice[r1 + x0i], d2 = lattice[r1 + x1i];
+        out[y * size + x] = (a + (b - a) * sx) * (1 - sy) + (c2 + (d2 - c2) * sx) * sy;
+      }
+    }
+    return out;
+  }
+  function periodicNoise1D(len, cells, R) {
+    const lattice = new Float32Array(cells);
+    for (let i = 0; i < cells; i++) lattice[i] = R();
+    const out = new Float32Array(len);
+    const step = cells / len;
+    for (let i = 0; i < len; i++) {
+      const f = i * step;
+      const i0 = Math.floor(f);
+      const t = f - i0;
+      const s = t * t * (3 - 2 * t);
+      const a = lattice[i0 % cells], b = lattice[(i0 + 1) % cells];
+      out[i] = a + (b - a) * s;
+    }
+    return out;
+  }
+
+  function shellBumpTexture() {
+    // subtle "orange peel" powder-coat grain for the composite shell —
+    // grayscale height map, tileable, centred on mid-grey.
+    const S = 512;
+    const c = makeCanvas(S, S), ctx = c.getContext('2d');
+    const R = rng(0x51E11);
+    const broad = periodicNoise2D(S, 7, R);   // gentle undulation
+    const peel = periodicNoise2D(S, 26, R);   // orange-peel cells
+    const fine = periodicNoise2D(S, 74, R);   // sand-blast micro grain
+    const img = ctx.createImageData(S, S), d = img.data;
+    for (let p = 0, i = 0; p < S * S; p++, i += 4) {
+      const grain = R() - 0.5;
+      const v = (peel[p] - 0.5) * 0.62 + (broad[p] - 0.5) * 0.3 +
+                (fine[p] - 0.5) * 0.26 + grain * 0.18;
+      const g = Math.max(0, Math.min(255, Math.round(128 + v * 88)));
+      d[i] = d[i + 1] = d[i + 2] = g;
+      d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return makeTexture(c, { srgb: false, repeat: [4, 4] });
+  }
+
+  function brushedBumpTexture() {
+    // directional brushed-metal micro relief: long horizontal streaks that
+    // stay seamless when tiled (row pattern is constant along x).
+    const S = 512;
+    const c = makeCanvas(S, S), ctx = c.getContext('2d');
+    const R = rng(0xB905);
+    const row = periodicNoise1D(S, 96, R);    // soft row-to-row banding
+    const chipN = periodicNoise1D(S, 192, R); // per-row machining offset (periodic)
+    const lineN = periodicNoise1D(S, 128, R); // which rows get a hard streak
+    const ampN = periodicNoise1D(S, 61, R);
+    const signN = periodicNoise1D(S, 37, R);
+    const broad = periodicNoise2D(S, 6, R);   // slow drift across the panel
+    const img = ctx.createImageData(S, S), d = img.data;
+    for (let y = 0; y < S; y++) {
+      const base = (row[y] - 0.5) * 34;
+      const chip = (chipN[y] - 0.5) * 10;
+      for (let x = 0; x < S; x++) {
+        const p = y * S + x;
+        const drift = (broad[p] - 0.5) * 16;
+        const micro = (R() - 0.5) * 13;       // per-pixel grain
+        const g = Math.max(0, Math.min(255, Math.round(128 + base + chip + drift + micro)));
+        const i = p * 4;
+        d[i] = d[i + 1] = d[i + 2] = g;
+        d[i + 3] = 255;
+      }
+    }
+    // a handful of brighter/darker machining lines: constant along x and
+    // periodic along y, so the tile wraps seamlessly on both axes.
+    for (let y = 0; y < S; y++) {
+      if (lineN[y] > 0.74) {
+        const v = (signN[y] > 0.5 ? 1 : -1) * (14 + ampN[y] * 28);
+        for (let x = 0; x < S; x++) {
+          const i = (y * S + x) * 4;
+          const g = Math.max(0, Math.min(255, d[i] + v));
+          d[i] = d[i + 1] = d[i + 2] = g;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return makeTexture(c, { srgb: false, repeat: [2, 1] });
+  }
+
+  function screenGlareTexture() {
+    // Soft oblique reflection streaks for the screen cover glass. 1024²
+    // transparent canvas, sRGB. RGB is premultiplied by the alpha profile so
+    // the map works both as an alpha-blended additive overlay (alpha drives
+    // the blend) and as an emissiveMap (three ignores alpha there, the RGB
+    // streak pattern drives the glow).
+    const S = 1024;
+    const c = makeCanvas(S, S), ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, S, S);
+
+    function strip(angle, center, width, peak, tint) {
+      ctx.save();
+      ctx.translate(S / 2, S / 2);
+      ctx.rotate(angle);
+      const hw = Math.max(1, width * S);
+      const g = ctx.createLinearGradient(center * S - hw, 0, center * S + hw, 0);
+      g.addColorStop(0, 'rgba(' + tint + ',0)');
+      g.addColorStop(0.2, 'rgba(' + tint + ',' + (peak * 0.22).toFixed(3) + ')');
+      g.addColorStop(0.5, 'rgba(' + tint + ',' + peak.toFixed(3) + ')');
+      g.addColorStop(0.8, 'rgba(' + tint + ',' + (peak * 0.28).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(' + tint + ',0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(-S * 1.2, -S * 1.2, S * 2.4, S * 2.4);
+      ctx.restore();
+    }
+
+    strip(-0.62, -0.2, 0.5, 0.13, '235,246,255');    // wide cool sheen
+    strip(-0.58, 0.04, 0.16, 0.2, '255,255,255');    // bright main streak
+    strip(-0.66, 0.1, 0.055, 0.16, '190,235,255');   // thin secondary streak
+    strip(-0.5, 0.34, 0.42, 0.08, '255,244,230');    // warm faint edge band
+
+    // soft bloom where the light leaves the glass
+    ctx.globalCompositeOperation = 'lighter';
+    const spot = ctx.createRadialGradient(S * 0.3, S * 0.24, 0, S * 0.3, S * 0.24, S * 0.2);
+    spot.addColorStop(0, 'rgba(220,245,255,.1)');
+    spot.addColorStop(1, 'rgba(220,245,255,0)');
+    ctx.fillStyle = spot;
+    ctx.fillRect(0, 0, S, S);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // feather the overlay so it never hits the bezel at full strength
+    ctx.globalCompositeOperation = 'destination-in';
+    const fade = ctx.createRadialGradient(S * 0.5, S * 0.46, S * 0.12, S * 0.5, S * 0.5, S * 0.78);
+    fade.addColorStop(0, 'rgba(255,255,255,1)');
+    fade.addColorStop(0.72, 'rgba(255,255,255,.9)');
+    fade.addColorStop(1, 'rgba(255,255,255,.15)');
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, 0, S, S);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // premultiply the stain colour with the alpha profile (see comment above)
+    const img = ctx.getImageData(0, 0, S, S);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3] / 255;
+      d[i] = Math.round(d[i] * a);
+      d[i + 1] = Math.round(d[i + 1] * a);
+      d[i + 2] = Math.round(d[i + 2] * a);
+    }
+    ctx.putImageData(img, 0, 0);
+
+    return makeTexture(c);
+  }
+
   /* ---------- lazy texture registry ---------- */
   const cache = {};
   function lazy(name, fn) {
@@ -1016,6 +1313,10 @@
     softGlow: lazy('softGlow', softGlowTexture),
     shadow: lazy('shadow', shadowTexture),
     floorGlow: lazy('floorGlow', floorGlowTexture),
-    brushedMetal: lazy('brushedMetal', brushedMetalTexture)
+    brushedMetal: lazy('brushedMetal', brushedMetalTexture),
+    // micro detail maps for the upgraded PBR materials
+    shellBump: lazy('shellBump', shellBumpTexture),
+    brushedBump: lazy('brushedBump', brushedBumpTexture),
+    screenGlare: lazy('screenGlare', screenGlareTexture)
   };
 })();

@@ -136,3 +136,53 @@
   - `js/lib/model.js` 1e122895a38c66454fd29fc49ff7f0a0c002c51b1da2afe88e53897f676a2937
   - `js/lib/textures.js` 65d8051291bf887ed09b71d1f8d698f5bcec9dc3d37df2f7534f77a4d77d2dd2
   - `js/vendor/three-bundle.min.js` ff49dd7eaf4c0c5b706525c06cf385aa76012dbb87edcd2f8f26e4e939a47946
+
+---
+
+## 8. 画质优化复验（2026-10-27 13:00–14:00，Lead）
+
+> 本节记录渲染画质专项优化之后的复验结果。**第 7 节的文件 SHA-256 已被本节取代。**
+
+### 8.1 优化范围（产品行为/交互/文案不变）
+
+- **抗锯齿（根因修复）**：整帧经由 `EffectComposer` 渲染到离屏纹理，画布级 `antialias:true` 从未真正生效。改为在 composer 的 `HalfFloat` 渲染目标上启用 **4× MSAA**（低档 2×/关闭），`antialias` 关闭以省掉无效的默认帧缓冲开销。
+- **渲染管线**：ACES → **AgX** 色调映射（曝光 1.14，保留中调色彩分离）；泛光收紧并降为半分辨率；新增末段 8-bit 抖动 pass（消除暗部色带）；PCF Soft 实时阴影（主光投影 + 接地阴影，拆解时淡出）；渐变天空 + 柔光箱 PMREM 环境反射。
+- **材质/贴图**：各向异性 8→16（GPU 上限）；前屏 512²→1024²、后屏 1024×576→1536×864、镀膜/光圈 512²→1024²；新增外壳「橘皮」、拉丝金属凹凸与屏幕反光贴图；标签贴图 alpha 清理（低 alpha 残差 18/102/26 → 0/0/0）；镜片镀膜叠加量 0.9→0.6。
+- **几何**：倒角段 3→5、曲线段 24→36、圆柱/圆环分段提升（三角形 78.7k → 131.8k，draw call 不变）；修复三类"黑块"根因（镜圈螺纹缺口凸出、前屏连接器穿透前盖、前盖纯黑细节片）与前后屏层间 z-fighting。
+- **交互视觉**：选中高亮强度 0.56→0.26（避免被选中部件整体泛白）；屏幕 HUD 排版修复（REC 与计时器重叠、FOV 徽标被录按钮遮挡、ISO/F2.8 粘连）。
+- **自适应画质**：三档（MSAA 4×/2×/关闭、阴影 2048/1024/关闭、像素比 2/1.5/1、泛光联动），启动按设备选档；持续 <45 fps 自动降一档且不回升。
+
+### 8.2 验收复跑
+
+`node qa/review/verify.mjs`（最终代码，Chrome 155 headless + GTX 1650 真实 GPU）：
+
+- **69/69 检查通过，8/8 验收项 PASS，fatal=[]**；
+- console error / console warning / pageerror / 资源失败：**0 / 0 / 0 / 0**；
+- 18 条网络请求全部为本地 `file://`，无外部域名；14 部件、点选、快捷键、移动端抽屉、双桌面视口布局与修复前一致。
+
+**验收脚本的两处断言更新（仅测试口径，产品未改）**：`#btnLabels` 在 ≤680px 下按 P2-4 的既有修复为 `display:none`，因此把"移动端标注开关可切换"改为"按钮隐藏且不渲染任何标注"，并让移动端 `hitInfo()` 把刻意隐藏的控件记为 `hidden` 而不是"不可点击"。
+
+### 8.3 渲染质量 / 性能审计（新增 `qa/perf/`）
+
+`node qa/perf/render-audit.mjs --baseline --uncapped`（基线 = 优化前提交 `9edadf1` 的 git worktree；纯 canvas、固定机位、3 帧中位）：
+
+| 指标（1600×1000） | 优化前 | 优化后 | 变化 |
+| --- | --- | --- | --- |
+| `edgeTransitionRatio`（DPR1，越高=过渡越平滑） | 0.331% | 0.475% | +43.8% |
+| `edgeTransitionPerEdge`（DPR1） | 8.39% | 11.29% | +34.5% |
+| `hfEnergy`（DPR1，越低=锯齿能量越少） | 503.3 | 335.4 | −33.4% |
+| `hfEnergy`（DPR2） | 279.4 | 189.7 | −32.1% |
+| 垂直同步 fps（DPR1 / DPR2） | 60.00 / 60.00 | 60.00 / 60.00 | 持平 |
+| 不限帧率 fps（DPR1，越高越省） | 282.2 | 112.8 | −60.0% |
+| console warning / error | 0 / 0 | 0 / 0 | 持平 |
+
+结论：抗锯齿显著改善（DPR1 最明显，DPR2 被 2× 超采样部分掩盖）；每帧 GPU 开销约 2.4×，GTX 1650 上仍稳定 60 fps，低端集显由自适应降档兜底。完整口径、截图与复现方式见 [../perf/report.md](../perf/report.md)。
+
+### 8.4 最终文件 SHA-256（本轮复验快照）
+
+- `index.html` `17780a5d4850f67f41f338312870362dc4a0d793b3e0bbfb52bb3338be09aaec`
+- `css/style.css` `e0c11d278ec17a548b06efe4fb3f8dff51d0fcf615036bd42c4c842e3dbb224b`
+- `js/app.js` `648042933df63e0845bcba4d335062b76e5d4ba9dae5768ff03dce17acd0a663`
+- `js/lib/model.js` `373a6adfd44f373ae61252d7ebcc7ef79cbd9627d104c63ee27fa5bda50d2c1a`
+- `js/lib/textures.js` `f4808fef7dd482d90a0e1a0312dedeece8fd1e9215b4236c1a10d438b0b7d2ff`
+- `js/vendor/three-bundle.min.js` `ff49dd7eaf4c0c5b706525c06cf385aa76012dbb87edcd2f8f26e4e939a47946`

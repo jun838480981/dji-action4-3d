@@ -71,12 +71,14 @@ npx serve .
 
 ## 视觉与实现
 
-- **几何**：`ExtrudeGeometry` 圆角外壳、`RoundedBoxGeometry`、`Lathe/Cylinder/Torus` 镜筒、自定义 `BufferGeometry` 粒子与刻度环；电脑主板、电池、镜头均为代码组件拼装。
-- **贴图**：`CanvasTexture` 实时绘制前置/后置屏预览 UI、PCB 走线与丝印、电池铭牌、滚花/噪点/螺丝/镜头镀膜/UI 屏幕。
-- **渲染**：`MeshPhysicalMaterial`（清漆、虹彩 CMOS）、程序化 PMREM 环境反射、ACES Filmic 色调映射、`UnrealBloomPass` 辉光、指数雾、程序化地面网格 shader。
+- **几何**：`ExtrudeGeometry` 圆角外壳（5 段倒角 / 36 段曲线）、`RoundedBoxGeometry`、`Lathe/Cylinder/Torus` 镜筒、自定义 `BufferGeometry` 粒子与刻度环；主板、电池、镜头均为代码组件拼装。滚花环、镜筒、密封圈等细件使用更高分段，轮廓无多边形感。
+- **贴图**：`CanvasTexture` 实时绘制前置/后置屏预览 UI、PCB 走线与丝印、电池铭牌、滚花/噪点/螺丝/镜头镀膜、屏幕反光，以及外壳「橘皮」与拉丝金属凹凸细节；全部贴图开启 mipmap，各向异性过滤取 GPU 上限（16×），斜视角下不糊、不闪。
+- **抗锯齿**：整帧经由 `EffectComposer` 渲染到离屏纹理，画布级的 `antialias` 对它无效 —— 因此把 **4× MSAA 加在 composer 的 `HalfFloat` 渲染目标上**（低档 2×/关闭）。这是轮廓锯齿的根本修复。
+- **渲染**：`MeshPhysicalMaterial`（清漆、虹彩镜片与 CMOS）、程序化渐变天空 + 柔光箱 PMREM 环境反射、**AgX 色调映射**（比 ACES 保留更多中调色彩分离）、半分辨率 `UnrealBloomPass` 辉光、PCF Soft 实时阴影（主光投影 + 接地阴影，拆解时淡出）、指数雾、程序化地面网格 shader、末段 8-bit 抖动（消除暗部渐变色带）。
 - **动画**：自研时间轴（无 GSAP 等动画库），部件错峰爆炸、选中部件二次偏移、相机球面缓动、辉光脉冲。
 - **UI**：原生 DOM + CSS（玻璃拟态、CSS 变量按部件主题色切换）；3D 标注使用 HTML + SVG 引线，屏幕空间约束与简单防重叠。
-- **性能**：像素比上限 2、自适应降分辨率、rAF 单循环、纹理惰性生成。
+- **性能与自适应画质**：三档画质（MSAA 4×/2×/关闭、阴影 2048/1024/关闭、像素比 2/1.5/1、泛光开/开/关），启动按设备能力选档，运行中若持续低于约 45 fps 自动降一档且不回升（避免分辨率反复跳动）。rAF 单循环、纹理严格惰性生成；1600×1000（GTX 1650）下垂直同步稳定 60 fps，不限帧率实测约 113 fps。
+
 
 ## 目录结构
 
@@ -88,9 +90,11 @@ dji-action4-3d/
 │  ├─ vendor/three-bundle.min.js  # Three.js r169 + 官方 addons（MIT，已本地化）
 │  ├─ lib/textures.js             # 全部 Canvas 程序化贴图
 │  ├─ lib/model.js                # Action 4 程序化模型与 14 个部件
-│  └─ app.js                      # 场景/相机/交互/拆解动画/UI 逻辑
+│  └─ app.js                      # 渲染管线 / 场景 / 相机 / 交互 / 拆解动画 / UI
 ├─ docs/dji-action4-reference.md  # 官方资料调研与建模坐标参考
-├─ qa/review/review-report.md     # 独立验收报告（8/8 验收项通过，无 P0/P1）
+├─ qa/
+│  ├─ review/                     # 独立验收脚本与报告（8/8 验收项通过，无 P0/P1）
+│  └─ perf/                       # 渲染质量 / 性能审计（抗锯齿指标、帧率、前后对比）
 ├─ screenshots/                   # 效果截图
 ├─ LICENSE                        # 本项目 MIT License
 ├─ THIRD-PARTY-NOTICES.md         # 第三方许可
@@ -100,6 +104,18 @@ dji-action4-3d/
 ## 验收
 
 在 Chrome（WebGL 2 / NVIDIA 加速）下完成独立验收：**8/8 验收项 PASS，无 P0 / P1 缺陷**；自动化检查覆盖加载、14 部件一致性、全部按钮/快捷键、鼠标拖拽与滚轮、3D 点选、移动端抽屉与详情、1100 / 1600 双桌面视口、参数与官方资料一致性等。详见 [qa/review/review-report.md](qa/review/review-report.md)。
+
+**画质优化后的复验（2026-10-27）**：渲染管线重做后在最终代码上重跑同一套脚本 —— **69/69 检查、8/8 验收项 PASS、无 console error / warning**。同时新增可复现的渲染质量 / 性能审计 `node qa/perf/render-audit.mjs --baseline --uncapped`（基线 = 优化前提交 `9edadf1`；纯 canvas、固定机位、3 帧中位）：
+
+| 指标（1600×1000，DPR1） | 优化前 | 优化后 | 变化 |
+| --- | --- | --- | --- |
+| 边缘过渡像素占比 `edgeTransitionRatio`（越高 = 过渡越平滑） | 0.331% | 0.475% | +43.8% |
+| 每边缘过渡像素 `edgeTransitionPerEdge` | 8.39% | 11.29% | +34.5% |
+| 高频锯齿能量 `hfEnergy`（越低 = 越平滑） | 503.3 | 335.4 | −33.4% |
+| 帧率（垂直同步，DPR1 / DPR2） | 60.00 / 60.00 | 60.00 / 60.00 | 持平 |
+| 不限帧率 fps（渲染开销信号，越高越省） | 282.2 | 112.8 | −60.0% |
+
+**结论**：抗锯齿显著改善，DPR1 下差异最明显（DPR2 本身有 2× 像素超采样兜底）；代价是每帧 GPU 开销约 2.4×，在 GTX 1650 上仍稳定 60 fps，更弱的集成显卡会由自适应画质自动降档。DPR2 停留 60 fps 时的默认启动档位为保守档（medium），用户可用 `DJI_APP.setQuality('high')` 取得 2× 像素比 + 4× MSAA 的最高档。完整数据、口径与前后截图见 [qa/perf/report.md](qa/perf/report.md)。
 
 
 ## 数据来源与免责声明

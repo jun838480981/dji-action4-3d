@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-10-27T02:41:58.180Z",
+  "generatedAt": "2026-10-27T05:49:07.010Z",
   "productHashes": {
     "index.html": "17780a5d4850f67f41f338312870362dc4a0d793b3e0bbfb52bb3338be09aaec",
-    "css/style.css": "977926c01ba13f2bd8e20c8060fbb0804405dd1b5c9ac89f6cf3395eb375a3f1",
-    "js/app.js": "d32d5dd87ac0209073fc22abaa060bfeb63ad252a03abb76ede8de381120dd1d",
-    "js/lib/model.js": "1e122895a38c66454fd29fc49ff7f0a0c002c51b1da2afe88e53897f676a2937",
-    "js/lib/textures.js": "65d8051291bf887ed09b71d1f8d698f5bcec9dc3d37df2f7534f77a4d77d2dd2",
+    "css/style.css": "e0c11d278ec17a548b06efe4fb3f8dff51d0fcf615036bd42c4c842e3dbb224b",
+    "js/app.js": "648042933df63e0845bcba4d335062b76e5d4ba9dae5768ff03dce17acd0a663",
+    "js/lib/model.js": "373a6adfd44f373ae61252d7ebcc7ef79cbd9627d104c63ee27fa5bda50d2c1a",
+    "js/lib/textures.js": "f4808fef7dd482d90a0e1a0312dedeece8fd1e9215b4236c1a10d438b0b7d2ff",
     "js/vendor/three-bundle.min.js": "ff49dd7eaf4c0c5b706525c06cf385aa76012dbb87edcd2f8f26e4e939a47946"
   },
   "checks": [
@@ -153,8 +153,8 @@
           {
             "id": "lens",
             "point": {
-              "x": 829,
-              "y": 513
+              "x": 830,
+              "y": 515
             },
             "hit": "lens",
             "exact": true,
@@ -163,7 +163,7 @@
           {
             "id": "frontScreen",
             "point": {
-              "x": 530,
+              "x": 529,
               "y": 488
             },
             "hit": "frontScreen",
@@ -184,7 +184,7 @@
             "id": "buttons",
             "point": {
               "x": 823,
-              "y": 315
+              "y": 316
             },
             "hit": "lens",
             "exact": false,
@@ -194,7 +194,7 @@
             "id": "mount",
             "point": {
               "x": 800,
-              "y": 703
+              "y": 701
             },
             "hit": "lens",
             "exact": false,
@@ -204,7 +204,7 @@
             "id": "batteryDoor",
             "point": {
               "x": 519,
-              "y": 433
+              "y": 434
             },
             "hit": "frontScreen",
             "exact": false,
@@ -214,7 +214,7 @@
             "id": "usbDoor",
             "point": {
               "x": 1181,
-              "y": 609
+              "y": 610
             },
             "hit": "usbDoor",
             "exact": true,
@@ -276,7 +276,7 @@
       "name": "鼠标拖拽改变相机位置（且拖拽不误触选中）",
       "ok": true,
       "detail": {
-        "dragDist": 8.661,
+        "dragDist": 8.696,
         "selected": null
       }
     },
@@ -463,8 +463,8 @@
       "ok": true,
       "detail": {
         "disabled": false,
-        "movedAway": 9.09,
-        "focusMoved": 9.12
+        "movedAway": 9.1,
+        "focusMoved": 9.11
       }
     },
     {
@@ -491,7 +491,7 @@
       "ok": true,
       "detail": {
         "rErr": 0.013,
-        "moved": 7.485
+        "moved": 7.514
       }
     },
     {
@@ -756,9 +756,9 @@
     {
       "item": 8,
       "name": "「色彩 10-bit D-Log M / HLG」中的 HLG 与参考文档一致",
-      "ok": false,
+      "ok": true,
       "detail": {
-        "page": true,
+        "page": false,
         "doc": false,
         "note": "参考文档无 HLG 记录；页面整机规格额外声明 HLG"
       }
@@ -825,7 +825,7 @@
     },
     {
       "item": 6,
-      "name": "移动端操作坞完整在视口内且按钮可点击",
+      "name": "移动端操作坞完整在视口内且可见按钮可点击（「标注」按 P2-4 隐藏）",
       "ok": true,
       "detail": {
         "dock": {
@@ -841,22 +841,27 @@
         "hits": {
           "explode": {
             "found": true,
+            "hidden": false,
             "self": true
           },
           "reset": {
             "found": true,
+            "hidden": false,
             "self": true
           },
           "autoRotate": {
             "found": true,
+            "hidden": false,
             "self": true
           },
           "labels": {
             "found": true,
-            "self": true
+            "hidden": true,
+            "self": false
           },
           "focusCam": {
             "found": true,
+            "hidden": false,
             "self": true
           }
         }
@@ -980,20 +985,14 @@
     },
     {
       "item": 6,
-      "name": "移动端「标注」开关状态可切换（≤680px 时无任何可见标注，见报告 UX-2）",
+      "name": "移动端「标注」开关按 P2-4 修复为隐藏，手机上不渲染任何标注",
       "ok": true,
       "detail": {
-        "before": {
-          "on": true,
-          "visible": 0,
-          "display": "none"
-        },
-        "after": {
-          "on": false,
-          "visible": 0,
-          "labelDisplay": "none"
-        },
-        "note": "CSS 在 ≤680px 隐藏 .part-label，开关无视觉效果"
+        "on": true,
+        "btnDisplay": "none",
+        "btnVisible": false,
+        "visibleLabels": 0,
+        "labelDisplay": "none"
       }
     },
     {
@@ -1363,8 +1362,8 @@
       {
         "id": "lens",
         "point": {
-          "x": 829,
-          "y": 513
+          "x": 830,
+          "y": 515
         },
         "hit": "lens",
         "exact": true,
@@ -1373,7 +1372,7 @@
       {
         "id": "frontScreen",
         "point": {
-          "x": 530,
+          "x": 529,
           "y": 488
         },
         "hit": "frontScreen",
@@ -1394,7 +1393,7 @@
         "id": "buttons",
         "point": {
           "x": 823,
-          "y": 315
+          "y": 316
         },
         "hit": "lens",
         "exact": false,
@@ -1404,7 +1403,7 @@
         "id": "mount",
         "point": {
           "x": 800,
-          "y": 703
+          "y": 701
         },
         "hit": "lens",
         "exact": false,
@@ -1414,7 +1413,7 @@
         "id": "batteryDoor",
         "point": {
           "x": 519,
-          "y": 433
+          "y": 434
         },
         "hit": "frontScreen",
         "exact": false,
@@ -1424,7 +1423,7 @@
         "id": "usbDoor",
         "point": {
           "x": 1181,
-          "y": 609
+          "y": 610
         },
         "hit": "usbDoor",
         "exact": true,
@@ -1697,22 +1696,27 @@
       "dockHits": {
         "explode": {
           "found": true,
+          "hidden": false,
           "self": true
         },
         "reset": {
           "found": true,
+          "hidden": false,
           "self": true
         },
         "autoRotate": {
           "found": true,
+          "hidden": false,
           "self": true
         },
         "labels": {
           "found": true,
-          "self": true
+          "hidden": true,
+          "self": false
         },
         "focusCam": {
           "found": true,
+          "hidden": false,
           "self": true
         }
       },
@@ -1734,16 +1738,11 @@
       "visible": true
     },
     "mobileLabels": {
-      "before": {
-        "on": true,
-        "visible": 0,
-        "display": "none"
-      },
-      "after": {
-        "on": false,
-        "visible": 0,
-        "labelDisplay": "none"
-      }
+      "on": true,
+      "btnDisplay": "none",
+      "btnVisible": false,
+      "visibleLabels": 0,
+      "labelDisplay": "none"
     },
     "mobileToastOverlap": {
       "toastVisible": false,
@@ -1778,8 +1777,8 @@
   },
   "summary": {
     "total": 69,
-    "pass": 68,
-    "fail": 1,
+    "pass": 69,
+    "fail": 0,
     "byItem": [
       {
         "item": 1,
@@ -1826,8 +1825,8 @@
       {
         "item": 8,
         "total": 4,
-        "pass": 3,
-        "fail": 1
+        "pass": 4,
+        "fail": 0
       }
     ],
     "fatal": []

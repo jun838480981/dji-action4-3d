@@ -25,6 +25,25 @@
   const MOBILE_INTRO_POSE = { az: 1.05, el: 0.38, r: 25.5, ty: 0.7 };
   const MOBILE_BREAKPOINT = 960;
 
+  /* ============================================================
+     render quality tiers
+     ------------------------------------------------------------
+     The whole scene is drawn through EffectComposer, i.e. into an
+     offscreen WebGLRenderTarget — the canvas `antialias` flag therefore
+     never reaches the actual scene pixels. Proper anti-aliasing has to
+     come from MSAA samples on the composer target instead, which is the
+     single biggest image-quality lever here.
+     Every tier bundles the knobs that actually trade looks for GPU cost.
+     ============================================================ */
+  const QUALITY_TIERS = [
+    { name: 'low',    label: '流畅', samples: 0, dprCap: 1.0, shadowOn: false, shadowMap: 512,  bloomScale: 0.5,  bloomEnabled: false },
+    { name: 'medium', label: '均衡', samples: 2, dprCap: 1.5, shadowOn: true,  shadowMap: 1024, bloomScale: 0.5,  bloomEnabled: true },
+    { name: 'high',   label: '精细', samples: 4, dprCap: 2.0, shadowOn: true,  shadowMap: 2048, bloomScale: 0.6,  bloomEnabled: true }
+  ];
+  const QUALITY_INDEX = { low: 0, medium: 1, high: 2 };
+  const TIER_HIGH = 2;
+  const TIER_MEDIUM = 1;
+
   const state = {
     exploded: false,
     explodeVisual: 0,
@@ -40,8 +59,11 @@
     ready: false,
     mobile: window.innerWidth <= MOBILE_BREAKPOINT,
     dragging: false,
-    fpsSamples: [],
-    qualityDropped: false
+    qualityTier: TIER_HIGH,
+    qualityCooldown: 0,
+    qualityDowngraded: false,
+    frameTimeAvg: 0,
+    tierSwitchAt: 0
   };
 
   let renderer = null;
@@ -50,6 +72,8 @@
   let controls = null;
   let composer = null;
   let bloomPass = null;
+  let ditherPass = null;
+  let keyLight = null;
   let model = null;
   let clock = null;
   let raycaster = null;
@@ -123,6 +147,65 @@
   }
 
   /* ============================================================
+     adaptive quality
+     ============================================================ */
+  function currentTier() {
+    return QUALITY_TIERS[state.qualityTier] || QUALITY_TIERS[TIER_HIGH];
+  }
+
+  function detectQualityTier() {
+    if (state.mobile) return TIER_MEDIUM;
+    const dpr = window.devicePixelRatio || 1;
+    const cores = navigator.hardwareConcurrency || 4;
+    const maxSamples = (renderer && renderer.capabilities && renderer.capabilities.maxSamples) || 0;
+    const fillPx = window.innerWidth * window.innerHeight * dpr * dpr;
+    // retina laptops / 4k canvases already push a lot of pixels; start one
+    // tier lower so the first seconds of interaction stay smooth.
+    if (maxSamples < 4 || cores <= 4 || fillPx > 6.2e6) return TIER_MEDIUM;
+    return TIER_HIGH;
+  }
+
+  function applyQuality(index, opts) {
+    opts = opts || {};
+    const prevIndex = state.qualityTier;
+    state.qualityTier = clamp(index | 0, 0, QUALITY_TIERS.length - 1);
+    const tier = currentTier();
+    const changed = prevIndex !== state.qualityTier;
+
+    if (renderer) {
+      const dpr = Math.min(window.devicePixelRatio || 1, tier.dprCap);
+      renderer.setPixelRatio(dpr);
+      renderer.shadowMap.enabled = tier.shadowOn;
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    if (keyLight) {
+      keyLight.castShadow = tier.shadowOn;
+      if (keyLight.shadow) {
+        keyLight.shadow.mapSize.set(tier.shadowMap, tier.shadowMap);
+        if (keyLight.shadow.map) {
+          keyLight.shadow.map.dispose();
+          keyLight.shadow.map = null;
+        }
+      }
+    }
+    if (stage.shadow && stage.shadow.material) {
+      // the baked contact blob keeps its strength; real shadows only add the
+      // directional/self-shadowing part (see animate())
+      stage.shadow.material.opacity = 0.5;
+    }
+    if (stage.shadowCatcher) stage.shadowCatcher.visible = tier.shadowOn;
+    if (bloomPass) bloomPass.enabled = tier.bloomEnabled;
+
+    if (composer) rebuildComposerTarget();
+    state.tierSwitchAt = performance.now();
+    if (changed && !opts.silent) {
+      showToast('画质：' + tier.label, 1800);
+    }
+    if (!opts.boot && changed) state.qualityDowngraded = state.qualityTier < prevIndex;
+    return tier;
+  }
+
+  /* ============================================================
      renderer / scene / environment
      ============================================================ */
   function initRenderer() {
@@ -130,22 +213,36 @@
     try {
       renderer = new THREE.WebGLRenderer({
         canvas: canvas,
-        antialias: true,
+        // Canvas-level MSAA is useless here: every frame is drawn into the
+        // composer's render target, so anti-aliasing must live on that target.
+        antialias: false,
         alpha: false,
         powerPreference: 'high-performance',
-        stencil: false
+        stencil: false,
+        depth: true
       });
     } catch (err) {
       showFallback(err && err.message ? err.message : 'WebGL 初始化失败');
       throw err;
     }
-    const dprCap = state.mobile ? 1.6 : 2;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
-    renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.06;
+    // AgX keeps far more colour separation in the mid-tones than ACES, which
+    // turned the matte shell into flat grey. Exposure is raised to compensate
+    // for AgX's slightly darker response.
+    renderer.toneMapping = THREE.AgXToneMapping;
+    renderer.toneMappingExposure = 1.14;
     renderer.shadowMap.enabled = false;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // accumulate draw / triangle counters across all composer passes
+    renderer.info.autoReset = false;
+
+    state.qualityTier = detectQualityTier();
+    // the procedural texture factory reads this before generating canvases
+    window.DJI = window.DJI || {};
+    window.DJI.textureAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
+    applyQuality(state.qualityTier, { silent: true, boot: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
   function initScene() {
@@ -168,41 +265,71 @@
   function initEnvironment() {
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envScene = new THREE.Scene();
-    envScene.background = new THREE.Color(0x020407);
 
-    const room = new THREE.Mesh(
-      new THREE.BoxGeometry(60, 60, 60),
-      new THREE.MeshBasicMaterial({ color: 0x070b11, side: THREE.BackSide })
+    // ---- gradient sky dome -----------------------------------------
+    // The previous environment was a flat dark box, so every metal surface
+    // reflected one single grey value and read as plastic. A soft vertical
+    // gradient plus a compressed bright band at the horizon gives anodised
+    // aluminium and black glass a believable reflection structure.
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(30, 48, 32),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        vertexShader: [
+          'varying vec3 vDir;',
+          'void main(){',
+          '  vDir = normalize(position);',
+          '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+          '}'
+        ].join('\n'),
+        fragmentShader: [
+          'precision highp float;',
+          'varying vec3 vDir;',
+          'void main(){',
+          '  float y = vDir.y;',
+          '  vec3 ground  = vec3(0.004, 0.006, 0.009);',
+          '  vec3 horizon = vec3(0.034, 0.055, 0.078);',
+          '  vec3 zenith  = vec3(0.010, 0.020, 0.036);',
+          '  vec3 col = mix(horizon, zenith, smoothstep(0.0, 0.68, y));',
+          '  col = mix(ground, col, smoothstep(-0.46, 0.02, y));',
+          '  float band = exp(-pow((y - 0.015) / 0.06, 2.0));',
+          '  col += vec3(0.115, 0.165, 0.215) * band;',
+          '  col += vec3(0.030, 0.036, 0.046) * smoothstep(0.15, 1.0, y);',
+          '  gl_FragColor = vec4(col, 1.0);',
+          '}'
+        ].join('\n')
+      })
     );
-    envScene.add(room);
+    envScene.add(sky);
 
-    function panel(w, h, rgb, pos, rotX, rotY) {
+    function panel(w, h, rgb, pos, rotX) {
       const mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
       mat.color.setRGB(rgb[0], rgb[1], rgb[2]);
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.position.set(pos[0], pos[1], pos[2]);
-      if (rotX) mesh.rotation.x = rotX;
-      if (rotY) mesh.rotation.y = rotY;
       mesh.lookAt(0, 0, 0);
-      if (rotX || rotY) mesh.rotation.set(rotX || 0, rotY || 0, 0);
+      if (rotX) mesh.rotation.set(rotX, 0, 0);
       envScene.add(mesh);
       return mesh;
     }
 
-    // large soft box above
-    panel(16, 12, [4.8, 4.8, 4.8], [0, 14, 1]);
+    // large soft box above (main specular source)
+    panel(17, 13, [5.2, 5.0, 4.7], [0, 16, 2]);
     // neutral key front
-    panel(10, 7, [3.2, 3.2, 3.2], [2, 4, 12]);
+    panel(12, 8, [2.8, 3.0, 3.2], [2, 5, 14]);
     // cool rim left
-    panel(9, 5, [0.35, 2.3, 3.2], [-12, 5, 3]);
+    panel(9, 5, [0.32, 2.15, 3.1], [-13, 5, 3]);
     // subtle warm rim right/back
-    panel(6, 3, [1.7, 0.85, 0.4], [11, 0, -5]);
+    panel(7, 4, [1.9, 1.0, 0.5], [12, 1, -6]);
     // cyan back strip
-    panel(5, 8, [0.35, 1.8, 2.7], [-1, 3, -13]);
+    panel(5, 9, [0.32, 1.75, 2.7], [-1, 3, -14]);
+    // low front-left fill (lifts the bottom faces)
+    panel(7, 3.5, [0.45, 1.15, 1.7], [-9, -2.5, 8]);
     // faint floor bounce
-    panel(18, 18, [0.35, 0.48, 0.66], [0, -9, 0], -Math.PI / 2);
+    panel(20, 20, [0.30, 0.42, 0.56], [0, -10, 0], -Math.PI / 2);
 
-    const envRT = pmrem.fromScene(envScene, 0.035);
+    const envRT = pmrem.fromScene(envScene, 0.022);
     scene.environment = envRT.texture;
     if ('environmentIntensity' in scene) scene.environmentIntensity = 1.0;
 
@@ -216,21 +343,37 @@
   }
 
   function initLights() {
-    scene.add(new THREE.HemisphereLight(0x6fa8c8, 0x02050a, 0.55));
+    scene.add(new THREE.HemisphereLight(0x6fa8c8, 0x02050a, 0.5));
 
-    const key = new THREE.DirectionalLight(0xfff4e8, 2.5);
+    // key light doubles as the only shadow caster: a single well-tuned soft
+    // shadow is enough to ground the floating body and let parts occlude
+    // each other, which is what makes the exploded view readable.
+    const key = new THREE.DirectionalLight(0xfff4e8, 2.35);
     key.position.set(7, 10, 9);
+    key.castShadow = true;
+    const tier = currentTier();
+    key.shadow.mapSize.set(tier.shadowMap, tier.shadowMap);
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 46;
+    key.shadow.camera.left = -11;
+    key.shadow.camera.right = 11;
+    key.shadow.camera.top = 11;
+    key.shadow.camera.bottom = -11;
+    key.shadow.bias = -0.0006;
+    key.shadow.normalBias = 0.028;
+    key.shadow.camera.updateProjectionMatrix();
     scene.add(key);
+    keyLight = key;
 
-    const fill = new THREE.DirectionalLight(0x7fc9ff, 1.55);
+    const fill = new THREE.DirectionalLight(0x7fc9ff, 1.45);
     fill.position.set(-10, 3, 7);
     scene.add(fill);
 
-    const rim = new THREE.DirectionalLight(0x62e9ff, 2.1);
+    const rim = new THREE.DirectionalLight(0x62e9ff, 2.05);
     rim.position.set(-4, 6, -10);
     scene.add(rim);
 
-    const warm = new THREE.DirectionalLight(0xffa46a, 0.95);
+    const warm = new THREE.DirectionalLight(0xffa46a, 0.9);
     warm.position.set(9, 1, -7);
     scene.add(warm);
 
@@ -319,6 +462,19 @@
     shadow.renderOrder = 3;
     scene.add(shadow);
     stage.shadow = shadow;
+
+    // real PCF-soft shadow catcher: the baked blob above stays as ambient
+    // contact darkening, while this plane receives the directional shadow
+    // (which also makes the exploded parts feel grounded).
+    const catcherMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.4, depthWrite: false });
+    const catcher = new THREE.Mesh(new THREE.PlaneGeometry(36, 36), catcherMat);
+    catcher.rotation.x = -Math.PI / 2;
+    catcher.position.y = floorY + 0.026;
+    catcher.renderOrder = 6;
+    catcher.receiveShadow = true;
+    catcher.visible = currentTier().shadowOn;
+    scene.add(catcher);
+    stage.shadowCatcher = catcher;
 
     // concentric rings on the floor
     const ringGroup = new THREE.Group();
@@ -442,6 +598,22 @@
     model = window.DJI.createModel();
     model.root.position.y = model.deviceY;
     scene.add(model.root);
+
+    // Shadow flags: solid shells cast and receive, while flat silk-prints /
+    // screen faces and see-through glass stay out of the shadow pass — they
+    // would only add acne or dark fringes.
+    model.root.traverse(function (o) {
+      if (!o.isMesh) return;
+      const geo = o.geometry;
+      const type = (geo && geo.type) || '';
+      const flat = type === 'PlaneGeometry' || type === 'CircleGeometry' || type === 'RingGeometry';
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const decorative = mats.some(function (m) {
+        return !!m && ((m.transparent && m.opacity < 0.9) || (m.alphaTest && m.alphaTest > 0.01));
+      });
+      o.castShadow = !flat && !decorative;
+      o.receiveShadow = !flat && !decorative;
+    });
 
     const spotLight = new THREE.PointLight(0x4fe3ff, 4, 9, 2);
     spotLight.position.set(0, 1.2, 3.2);
@@ -750,7 +922,10 @@
         part._glowApplied = true;
         const col = customColors[part.id];
         const plateScale = (part.id === 'mount' || part.id === 'frontCover' || part.id === 'rearCover') ? 0.55 : 1;
-        const strength = part.glow * (isSel ? 0.56 : 0.4) * (isSel ? pulse : 1) * plateScale;
+        // Keep the selection readable without self-illuminating the whole
+        // part into a flat blob: the outline ring + label + detail panel
+        // already carry the "selected" state.
+        const strength = part.glow * (isSel ? 0.26 : 0.14) * (isSel ? pulse : 1) * plateScale;
         part.glowMats.forEach(function (m) {
           m.emissive.copy(col);
           m.emissiveIntensity = strength;
@@ -1377,8 +1552,8 @@
     if (controls) controls.maxDistance = state.mobile ? 64 : 34;
     renderer.setSize(w, h);
     if (composer) {
+      composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);
-      if (bloomPass) bloomPass.setSize(w, h);
     }
     labelCacheW = 0;
     Object.keys(labelEls).forEach(function (k) { labelEls[k].w = 0; labelEls[k].h = 0; });
@@ -1391,19 +1566,31 @@
   }
 
   function updateAdaptiveQuality(dt) {
-    if (state.qualityDropped) return;
-    const fps = dt > 0 ? 1 / dt : 60;
-    state.fpsSamples.push(fps);
-    if (state.fpsSamples.length > 90) state.fpsSamples.shift();
-    if (state.fpsSamples.length === 90) {
-      const avg = state.fpsSamples.reduce(function (a, b) { return a + b; }, 0) / state.fpsSamples.length;
-      if (avg < 26 && (window.devicePixelRatio || 1) > 1.05) {
-        state.qualityDropped = true;
-        renderer.setPixelRatio(1);
-        if (composer) composer.setPixelRatio(1);
-        onResize();
-        showToast('已自动优化渲染分辨率', 2200);
+    if (!state.ready || !renderer || !(dt > 0)) return;
+    // smoothed frame time in ms, clamped so a single hitch alone cannot
+    // trigger a quality change
+    const ms = Math.min(64, dt * 1000);
+    state.frameTimeAvg = state.frameTimeAvg === 0
+      ? ms
+      : state.frameTimeAvg + (ms - state.frameTimeAvg) * 0.06;
+    if (state.qualityCooldown > 0) {
+      state.qualityCooldown = Math.max(0, state.qualityCooldown - dt);
+      return;
+    }
+    // One-way safety net: if the device cannot hold ~40 fps at the current
+    // tier we step down once and never step back up automatically, so the
+    // resolution can never visibly flap during a session.
+    if (state.qualityDowngraded) return;
+    if (state.frameTimeAvg > 25 && state.qualityTier > 0) {
+      state.downFrames = (state.downFrames || 0) + 1;
+      if (state.downFrames > 90) {
+        state.downFrames = 0;
+        applyQuality(state.qualityTier - 1);
+        state.qualityCooldown = 2.4;
+        showToast('已自动降低画质以保持流畅', 2400);
       }
+    } else {
+      state.downFrames = 0;
     }
   }
 
@@ -1448,6 +1635,8 @@
   function animate(now) {
     animFrame = requestAnimationFrame(animate);
     if (!renderer || !scene || !camera) return;
+    // manual reset: counters must cover every composer pass, not just the last
+    renderer.info.reset();
     const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
     lastTime = now;
     elapsed += dt;
@@ -1467,6 +1656,14 @@
     updateGlow(dt);
     updateLabels();
     updateMeter(now);
+
+    // baked contact shadow: strongest when assembled, fades while the parts
+    // scatter (a solid black blob under an exploded body looks wrong)
+    if (stage.shadow && stage.shadow.material) {
+      stage.shadow.material.opacity = 0.5 * (1 - state.explodeVisual * 0.92);
+      const blobScale = 1 + state.explodeVisual * 0.28;
+      stage.shadow.scale.set(blobScale, blobScale, 1);
+    }
 
     // model float
     if (model) {
@@ -1511,17 +1708,139 @@
   /* ============================================================
      init
      ============================================================ */
-  function initComposer() {
-    composer = new EffectComposer(renderer);
+  /* ============================================================
+     post-processing building blocks
+     ============================================================ */
+
+  // Every frame is drawn into the composer's offscreen target, so the canvas
+  // `antialias` flag never reaches the scene: MSAA has to live here. This is
+  // the single biggest image-quality lever of the whole page.
+  function makeComposerTarget(samples) {
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    const w = Math.max(1, Math.floor(size.x));
+    const h = Math.max(1, Math.floor(size.y));
+    const target = new THREE.WebGLRenderTarget(w, h, {
+      type: THREE.HalfFloatType,
+      samples: samples || 0,
+      stencilBuffer: false,
+      depthBuffer: true,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      generateMipmaps: false
+    });
+    target.texture.name = 'composer.msaa';
+    return target;
+  }
+
+  function rebuildComposerTarget() {
+    if (!composer) return;
+    composer.reset(makeComposerTarget(currentTier().samples));
     composer.setPixelRatio(renderer.getPixelRatio());
     composer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // Minimal full-screen triangle. three's official addons ship FullScreenQuad,
+  // but the vendored bundle only contains a handful of modules.
+  function makeFullScreenTriangle(material) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([
+      -1, -1, 0, 3, -1, 0, -1, 3, 0
+    ], 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.frustumCulled = false;
+    const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    return {
+      mesh: mesh,
+      render: function (r) { r.render(mesh, cam); },
+      dispose: function () { geo.dispose(); }
+    };
+  }
+
+  // Final display-space pass: sub-LSB interleaved-gradient noise. The scene is
+  // rendered in HDR and tone-mapped to 8 bit, which visibly banded the dark
+  // radial gradients and the floor glow.
+  function DitherPass() {
+    this.enabled = true;
+    this.needsSwap = false;
+    this.clear = false;
+    this.renderToScreen = false;
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uAmount: { value: 1.15 }
+      },
+      vertexShader: [
+        'varying vec2 vUv;',
+        'void main(){',
+        '  vUv = uv;',
+        '  gl_Position = vec4(position.xy, 0.0, 1.0);',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'precision highp float;',
+        'uniform sampler2D tDiffuse;',
+        'uniform vec2 uResolution;',
+        'uniform float uAmount;',
+        'varying vec2 vUv;',
+        'float ign(vec2 p){ return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }',
+        'void main(){',
+        '  vec3 c = texture2D(tDiffuse, vUv).rgb;',
+        '  float n = ign(floor(vUv * uResolution)) - 0.5;',
+        '  c += n * (uAmount / 255.0);',
+        '  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);',
+        '}'
+      ].join('\n'),
+      depthTest: false,
+      depthWrite: false
+    });
+    this.quad = makeFullScreenTriangle(this.material);
+  }
+  DitherPass.prototype.setSize = function (w, h) {
+    this.material.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));
+  };
+  DitherPass.prototype.render = function (renderer, writeBuffer, readBuffer) {
+    this.material.uniforms.tDiffuse.value = readBuffer.texture;
+    if (this.renderToScreen) {
+      renderer.setRenderTarget(null);
+    } else {
+      renderer.setRenderTarget(writeBuffer);
+      if (this.clear) renderer.clear();
+    }
+    this.quad.render(renderer);
+  };
+
+  function initComposer() {
+    composer = new EffectComposer(renderer, makeComposerTarget(currentTier().samples));
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(window.innerWidth, window.innerHeight);
+
     composer.addPass(new RenderPass(scene, camera));
+
+    // Bloom used to be strong and wide, which fogged the screen content and
+    // the silk-print. Keep it as a tight specular accent instead.
     bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.42, 0.56, 0.84
+      0.26, 0.42, 0.92
     );
+    // The glow is low frequency: running its mip chain at a fraction of the
+    // frame size is visually identical and ~4x cheaper.
+    const bloomSetSize = bloomPass.setSize.bind(bloomPass);
+    bloomPass.setSize = function (w, h) {
+      const s = currentTier().bloomScale || 0.5;
+      bloomSetSize(Math.max(8, Math.round(w * s)), Math.max(8, Math.round(h * s)));
+    };
+    bloomPass.enabled = currentTier().bloomEnabled;
     composer.addPass(bloomPass);
+
     composer.addPass(new OutputPass());
+
+    ditherPass = new DitherPass();
+    composer.addPass(ditherPass);
+
+    // route the initial sizing through the overridden setSize chain
+    composer.setSize(window.innerWidth, window.innerHeight);
   }
 
   function init() {
@@ -1546,6 +1865,7 @@
     boot(94);
     updateStatusMeta();
     state.ready = true;
+    state.qualityCooldown = 2.0;
     renderOverview();
     // first frame
     composer.render();
@@ -1565,7 +1885,36 @@
       getModel: function () { return model; },
       getCamera: function () { return camera; },
       getControls: function () { return controls; },
-      getRenderer: function () { return renderer; }
+      getRenderer: function () { return renderer; },
+      getComposer: function () { return composer; },
+      getScene: function () { return scene; },
+      getStage: function () { return stage; },
+      getQuality: function () { return currentTier().name; },
+      setQuality: function (name) {
+        const index = QUALITY_INDEX[name];
+        if (index === undefined) return false;
+        state.qualityCooldown = 5;
+        applyQuality(index);
+        return true;
+      },
+      getStats: function () {
+        const tier = currentTier();
+        return {
+          tier: tier.name,
+          samples: tier.samples,
+          dpr: renderer.getPixelRatio(),
+          shadows: tier.shadowOn,
+          shadowMap: tier.shadowOn ? tier.shadowMap : 0,
+          bloom: tier.bloomEnabled,
+          frameTimeAvg: state.frameTimeAvg,
+          drawCalls: renderer.info.render.calls,
+          triangles: renderer.info.render.triangles,
+          programs: renderer.info.programs ? renderer.info.programs.length : 0,
+          textures: renderer.info.memory.textures,
+          geometries: renderer.info.memory.geometries
+        };
+      },
+      renderOnce: function () { if (composer) composer.render(); }
     };
   }
 

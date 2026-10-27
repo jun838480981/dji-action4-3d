@@ -824,9 +824,15 @@ const main = async () => {
     const hitInfo = sel => {
       const el = document.querySelector(sel);
       if (!el) return { found: false };
+      const cs = getComputedStyle(el);
       const r = el.getBoundingClientRect();
+      // controls that are intentionally hidden on phones (e.g. the 「标注」
+      // toggle, P2-4) are reported as `hidden` instead of "not clickable"
+      if (cs.display === 'none' || cs.visibility === 'hidden' || r.width === 0 || r.height === 0) {
+        return { found: true, hidden: true, self: false };
+      }
       const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return { found: true, self: !!(h && (h === el || el.contains(h))) };
+      return { found: true, hidden: false, self: !!(h && (h === el || el.contains(h))) };
     };
     return {
       iw: window.innerWidth, ih: window.innerHeight,
@@ -852,8 +858,9 @@ const main = async () => {
     mobileBase.parts.right <= 1 && mobileBase.info.left >= mobileBase.iw - 1 && !mobileBase.panelsOpen.parts && !mobileBase.panelsOpen.info, {
     parts: mobileBase.parts, info: mobileBase.info
   });
-  check(6, '移动端操作坞完整在视口内且按钮可点击', mobileBase.dock.found && mobileBase.dock.left >= 0 && mobileBase.dock.right <= mobileBase.iw + 1 && mobileBase.dock.bottom <= mobileBase.ih &&
-    Object.values(mobileBase.dockHits).every(h => h.found && h.self), { dock: mobileBase.dock, hits: mobileBase.dockHits });
+  const mobileDockHitsFine = Object.values(mobileBase.dockHits).every(h => h.found && (h.hidden || h.self));
+  check(6, '移动端操作坞完整在视口内且可见按钮可点击（「标注」按 P2-4 隐藏）', mobileBase.dock.found && mobileBase.dock.left >= 0 && mobileBase.dock.right <= mobileBase.iw + 1 && mobileBase.dock.bottom <= mobileBase.ih &&
+    mobileDockHitsFine, { dock: mobileBase.dock, hits: mobileBase.dockHits });
   await mobilePage.waitForTimeout(4200); // let the intro toast expire for a clean shot
   await shot(mobilePage, '12-mobile-390x844-assembled.png');
 
@@ -977,20 +984,25 @@ const main = async () => {
   await mobilePage.tap('.modal-close');
   await mobilePage.waitForTimeout(500);
 
-  // mobile labels toggle: state changes but CSS hides labels at <=680px -> no visible effect (UX issue)
-  const mobLabelsBefore = await mobilePage.evaluate(() => ({ on: window.DJI_APP.state.labelsOn, visible: document.querySelectorAll('.part-label.is-visible').length, display: getComputedStyle(document.querySelector('.part-label')).display }));
-  await mobilePage.tap('#btnLabels');
-  await mobilePage.waitForTimeout(700);
-  const mobLabelsAfter = await mobilePage.evaluate(() => ({
-    on: window.DJI_APP.state.labelsOn,
-    visible: document.querySelectorAll('.part-label.is-visible').length,
-    labelDisplay: getComputedStyle(document.querySelector('.part-label')).display
-  }));
+  // mobile labels toggle: the 「标注」 button is intentionally hidden at ≤680px
+  // (the P2-4 fix — part labels themselves are CSS-hidden on phones, so the
+  // toggle would only be a dead control there).
+  const mobLabels = await mobilePage.evaluate(() => {
+    const btn = document.getElementById('btnLabels');
+    const cs = getComputedStyle(btn);
+    const rect = btn.getBoundingClientRect();
+    const label = document.querySelector('.part-label');
+    return {
+      on: window.DJI_APP.state.labelsOn,
+      btnDisplay: cs.display,
+      btnVisible: rect.width > 0 && rect.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden',
+      visibleLabels: document.querySelectorAll('.part-label.is-visible').length,
+      labelDisplay: label ? getComputedStyle(label).display : 'n/a'
+    };
+  });
   await shot(mobilePage, '24-mobile-exploded-label-toggle.png');
-  results.raw.mobileLabels = { before: mobLabelsBefore, after: mobLabelsAfter };
-  check(6, '移动端「标注」开关状态可切换（≤680px 时无任何可见标注，见报告 UX-2）', mobLabelsAfter.on !== mobLabelsBefore.on, { before: mobLabelsBefore, after: mobLabelsAfter, note: 'CSS 在 ≤680px 隐藏 .part-label，开关无视觉效果' });
-  await mobilePage.tap('#btnLabels');
-  await mobilePage.waitForTimeout(400);
+  results.raw.mobileLabels = mobLabels;
+  check(6, '移动端「标注」开关按 P2-4 修复为隐藏，手机上不渲染任何标注', mobLabels.btnVisible === false && mobLabels.visibleLabels === 0, mobLabels);
 
   // mobile blank tap cancels selection
   const mobBlankPts = await mobilePage.evaluate(() => {

@@ -9,8 +9,8 @@
   const B = window.THREE_BUNDLE;
   const THREE = B.THREE;
   const RoundedBoxGeometry = B.RoundedBoxGeometry;
-  const T = window.DJI.textures;
   window.DJI = window.DJI || {};
+  const T = window.DJI.textures || {};
 
   /* ---------- dimensions ---------- */
   const W = 7.05, H = 4.42, D = 3.28;
@@ -236,57 +236,88 @@
   ];
 
   /* ---------- materials factory ---------- */
+  // textures.js may land its micro-detail maps after this file is upgraded;
+  // probe them defensively so model.js keeps working either way.
+  function texIf(name) {
+    const fn = T && T[name];
+    return typeof fn === 'function' ? fn() : null;
+  }
+  function withBump(opts, map, scale) {
+    if (map && scale) { opts.bumpMap = map; opts.bumpScale = scale; }
+    return opts;
+  }
+
   function makeMaterials() {
-    const shell = new THREE.MeshPhysicalMaterial({
-      color: 0x1b1e23, metalness: 0.32, roughness: 0.56,
-      clearcoat: 0.22, clearcoatRoughness: 0.62,
-      roughnessMap: T.speckle(), envMapIntensity: 0.95
-    });
-    const shellDark = new THREE.MeshStandardMaterial({
-      color: 0x101216, metalness: 0.22, roughness: 0.66,
-      roughnessMap: T.speckle(), envMapIntensity: 0.7
-    });
-    const frame = new THREE.MeshStandardMaterial({
-      color: 0x2a2e33, metalness: 0.8, roughness: 0.4,
-      roughnessMap: T.brushedMetal(), envMapIntensity: 1.2
-    });
+    const shellBump = texIf('shellBump');
+    const brushedBump = texIf('brushedBump');
+    const screenGlare = texIf('screenGlare');
+
+    // powder-coated composite: the bump map breaks up the clearcoat highlight
+    // so the radius reads as a machined bevel instead of a flat silhouette.
+    const shell = new THREE.MeshPhysicalMaterial(withBump({
+      color: 0x1b1e23, metalness: 0.3, roughness: 0.5,
+      clearcoat: 0.3, clearcoatRoughness: 0.46,
+      roughnessMap: T.speckle(), envMapIntensity: 1.02
+    }, shellBump, 0.006));
+    const shellDark = new THREE.MeshStandardMaterial(withBump({
+      color: 0x101216, metalness: 0.22, roughness: 0.61,
+      roughnessMap: T.speckle(), envMapIntensity: 0.74
+    }, shellBump, 0.005));
+    // anodised / bead-blasted metal with directional brushing relief
+    const frame = new THREE.MeshStandardMaterial(withBump({
+      color: 0x2a2e33, metalness: 0.85, roughness: 0.37,
+      roughnessMap: T.brushedMetal(), envMapIntensity: 1.28
+    }, brushedBump, 0.0045));
     const lensRing = new THREE.MeshStandardMaterial({
-      color: 0x2f343a, metalness: 0.86, roughness: 0.48,
-      bumpMap: T.knurlBump(), bumpScale: 0.02, envMapIntensity: 0.8
+      color: 0x2f343a, metalness: 0.88, roughness: 0.42,
+      bumpMap: T.knurlBump(), bumpScale: 0.018, envMapIntensity: 0.88
     });
     const blackGloss = new THREE.MeshPhysicalMaterial({
-      color: 0x05070a, metalness: 0.42, roughness: 0.16,
-      clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.5
+      color: 0x05070a, metalness: 0.42, roughness: 0.14,
+      clearcoat: 1, clearcoatRoughness: 0.055, envMapIntensity: 1.55
     });
-    const glass = new THREE.MeshPhysicalMaterial({
+    // cover glass: iridescent coating + a faint baked-in reflection streak.
+    // Using an emissiveMap instead of an extra additive plane keeps the
+    // mesh / draw-call / pickable count exactly where it was.
+    const glassOpts = {
       color: 0x0b1520, metalness: 0.0, roughness: 0.05,
       transparent: true, opacity: 0.27, clearcoat: 1, clearcoatRoughness: 0.04,
-      envMapIntensity: 1.45, depthWrite: false
-    });
+      envMapIntensity: 1.5, depthWrite: false,
+      iridescence: 0.3, iridescenceIOR: 1.32, iridescenceThicknessRange: [120, 420],
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+    };
+    if (screenGlare) {
+      glassOpts.emissiveMap = screenGlare;
+      glassOpts.emissive = new THREE.Color(0xdfefff);
+      glassOpts.emissiveIntensity = 0.5;
+    }
+    const glass = new THREE.MeshPhysicalMaterial(glassOpts);
     const lensGlass = new THREE.MeshPhysicalMaterial({
-      color: 0x08111b, metalness: 0.0, roughness: 0.07,
-      transparent: true, opacity: 0.16, clearcoat: 0.65, clearcoatRoughness: 0.05,
-      envMapIntensity: 0.65, depthWrite: false
+      color: 0x08111b, metalness: 0.0, roughness: 0.06,
+      transparent: true, opacity: 0.17, clearcoat: 0.7, clearcoatRoughness: 0.05,
+      envMapIntensity: 0.8, depthWrite: false,
+      iridescence: 0.55, iridescenceIOR: 1.42, iridescenceThicknessRange: [180, 560],
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
     });
     const screenBezel = new THREE.MeshPhysicalMaterial({
-      color: 0x030405, metalness: 0.5, roughness: 0.13,
-      clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.4
+      color: 0x030405, metalness: 0.5, roughness: 0.12,
+      clearcoat: 1, clearcoatRoughness: 0.045, envMapIntensity: 1.45
     });
     const copper = new THREE.MeshStandardMaterial({
-      color: 0xb87045, metalness: 1, roughness: 0.36, envMapIntensity: 1.3
+      color: 0xb87045, metalness: 1, roughness: 0.35, envMapIntensity: 1.35
     });
-    const aluminum = new THREE.MeshStandardMaterial({
-      color: 0x8d969c, metalness: 1, roughness: 0.48, envMapIntensity: 1.2
-    });
+    const aluminum = new THREE.MeshStandardMaterial(withBump({
+      color: 0x8d969c, metalness: 1, roughness: 0.42, envMapIntensity: 1.32
+    }, brushedBump, 0.005));
     const graphite = new THREE.MeshStandardMaterial({
       color: 0x23262a, metalness: 0.5, roughness: 0.7, envMapIntensity: 0.8
     });
-    const mountMetal = new THREE.MeshStandardMaterial({
-      color: 0x1b1e22, metalness: 0.88, roughness: 0.38,
-      roughnessMap: T.brushedMetal(), envMapIntensity: 0.95
-    });
+    const mountMetal = new THREE.MeshStandardMaterial(withBump({
+      color: 0x1b1e22, metalness: 0.88, roughness: 0.33,
+      roughnessMap: T.brushedMetal(), envMapIntensity: 1.12
+    }, brushedBump, 0.006));
     const rubber = new THREE.MeshStandardMaterial({
-      color: 0x07090b, metalness: 0.0, roughness: 0.92, envMapIntensity: 0.45
+      color: 0x07090b, metalness: 0.0, roughness: 0.94, envMapIntensity: 0.4
     });
     const gold = new THREE.MeshStandardMaterial({
       color: 0xd8ad55, metalness: 1, roughness: 0.26, envMapIntensity: 1.4
@@ -305,31 +336,49 @@
     const screenRear = new THREE.MeshBasicMaterial({ map: T.screenRear(), toneMapped: false });
     const screenFront = new THREE.MeshBasicMaterial({ map: T.screenFront(), toneMapped: false });
     const screw = new THREE.MeshStandardMaterial({
-      map: T.screw(), transparent: true, alphaTest: 0.05,
-      metalness: 0.9, roughness: 0.32, envMapIntensity: 1.3
+      map: T.screw(), transparent: true, alphaTest: 0.3,
+      metalness: 0.9, roughness: 0.32, envMapIntensity: 1.3,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
     });
+    // silk prints: a high alphaTest plus polygon offset drops the dark fringe
+    // that used to outline every glyph against the shell.
     const logo = new THREE.MeshStandardMaterial({
-      map: T.logo(), transparent: true, alphaTest: 0.04, roughness: 0.5, metalness: 0.1,
-      color: 0xffffff, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2
+      map: T.logo(), transparent: true, alphaTest: 0.45, roughness: 0.5, metalness: 0.1,
+      color: 0xffffff, opacity: 0.9, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
     });
     const actionLogo = new THREE.MeshStandardMaterial({
-      map: T.actionLogo(), transparent: true, alphaTest: 0.04, roughness: 0.6, metalness: 0.05,
-      opacity: 0.88, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2
+      map: T.actionLogo(), transparent: true, alphaTest: 0.45, roughness: 0.6, metalness: 0.05,
+      opacity: 0.92, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
     });
     const batteryLabel = new THREE.MeshStandardMaterial({
-      map: T.batteryLabel(), metalness: 0.25, roughness: 0.52, envMapIntensity: 0.8
+      map: T.batteryLabel(), metalness: 0.25, roughness: 0.52, envMapIntensity: 0.8,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
     });
     const mic = new THREE.MeshStandardMaterial({
       map: T.micGrille(), metalness: 0.4, roughness: 0.72, envMapIntensity: 0.6
     });
     const qsLabel = new THREE.MeshStandardMaterial({
-      map: T.qsLabel(), transparent: true, alphaTest: 0.04, roughness: 0.6, metalness: 0.2,
-      depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2
+      map: T.qsLabel(), transparent: true, alphaTest: 0.45, roughness: 0.6, metalness: 0.2,
+      depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
+    });
+    // flat, unlit black discs on the front face read as black stickers. A lit,
+    // high-roughness dark material reads as a drilled recess, and polygon
+    // offset plus a small physical offset keeps it clear of the shell plane.
+    const detailDark = new THREE.MeshStandardMaterial({
+      color: 0x080b0e, metalness: 0.3, roughness: 0.6, envMapIntensity: 0.55,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+    });
+    const grilleDark = new THREE.MeshStandardMaterial({
+      color: 0x04060a, metalness: 0.12, roughness: 0.86, envMapIntensity: 0.32
     });
     return {
       shell, shellDark, frame, lensRing, blackGloss, glass, lensGlass, screenBezel, copper,
       aluminum, graphite, rubber, gold, red, whitePlastic, pcbFace, pcbEdge,
-      screenRear, screenFront, screw, logo, actionLogo, batteryLabel, mic, qsLabel, mountMetal
+      screenRear, screenFront, screw, logo, actionLogo, batteryLabel, mic, qsLabel, mountMetal,
+      detailDark, grilleDark
     };
   }
 
@@ -372,14 +421,14 @@
     const depth = Math.max(0.02, totalDepth - bevel * 2);
     const shape = roundedRectShape(w - bevel * 2, h - bevel * 2, Math.max(0.04, cornerR - bevel));
     const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: depth, bevelEnabled: true, bevelSegments: 3, steps: 1,
-      bevelSize: bevel, bevelThickness: bevel, curveSegments: 24
+      depth: depth, bevelEnabled: true, bevelSegments: 5, steps: 1,
+      bevelSize: bevel, bevelThickness: bevel, curveSegments: 36
     });
     geo.translate(0, 0, -depth / 2);
     return geo;
   }
   function roundedRectPoints(w, h, r, z, arcSeg) {
-    arcSeg = arcSeg || 7;
+    arcSeg = arcSeg || 10;
     const pts = [];
     const x = -w / 2, y = -h / 2;
     function arc(cx, cy, a0, a1) {
@@ -408,7 +457,7 @@
     return add(g, new THREE.BoxGeometry(w, h, d), mat, x, y, z, rx, ry, rz);
   }
   function rbox(g, w, h, d, radius, mat, x, y, z, rx, ry, rz) {
-    return add(g, new RoundedBoxGeometry(w, h, d, 3, radius), mat, x, y, z, rx, ry, rz);
+    return add(g, new RoundedBoxGeometry(w, h, d, 4, radius), mat, x, y, z, rx, ry, rz);
   }
   function cylZ(g, rTop, rBot, h, seg, mat, x, y, z, open) {
     return add(g, new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, !!open), mat, x, y, z, Math.PI / 2, 0, 0);
@@ -417,14 +466,14 @@
     return add(g, new THREE.CylinderGeometry(rTop, rBot, h, seg, 1, !!open), mat, x, y, z);
   }
   function torus(g, radius, tube, mat, x, y, z, rx, ry, rz, seg) {
-    return add(g, new THREE.TorusGeometry(radius, tube, 10, seg || 64), mat, x, y, z, rx, ry, rz);
+    return add(g, new THREE.TorusGeometry(radius, tube, 14, seg || 64), mat, x, y, z, rx, ry, rz);
   }
   function plane(g, w, h, mat, x, y, z, rx, ry, rz) {
     return add(g, new THREE.PlaneGeometry(w, h), mat, x, y, z, rx, ry, rz);
   }
   function screw(g, x, y, z, facing, size) {
     size = size || 0.09;
-    const m = new THREE.Mesh(new THREE.CircleGeometry(size, 20), MAT.screw);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(size, 24), MAT.screw);
     m.position.set(x, y, z);
     if (facing === 'back') m.rotation.y = Math.PI;
     if (facing === 'up') m.rotation.x = -Math.PI / 2;
@@ -442,46 +491,51 @@
   function buildLens(g) {
     const x = LENS.x, y = LENS.y;
     // collar seated in the front cover
-    cylZ(g, 1.84, 1.88, 0.13, 64, MAT.frame, x, y, 1.69, true);
-    torus(g, 1.82, 0.022, MAT.blackGloss, x, y, 1.75, 0, 0, 0, 80);
+    cylZ(g, 1.84, 1.88, 0.13, 96, MAT.frame, x, y, 1.69, true);
+    torus(g, 1.82, 0.022, MAT.blackGloss, x, y, 1.75, 0, 0, 0, 96);
     // knurled protection ring (thread-on, part of waterproofing)
-    cylZ(g, 1.75, 1.78, 0.27, 96, MAT.lensRing, x, y, 1.885, true);
+    cylZ(g, 1.75, 1.78, 0.27, 128, MAT.lensRing, x, y, 1.885, true);
     for (let i = 0; i < 56; i++) {
       const a = (i / 56) * Math.PI * 2;
       box(g, 0.05, 0.042, 0.235, MAT.lensRing,
         x + Math.cos(a) * 1.755, y + Math.sin(a) * 1.755, 1.885, 0, 0, a);
     }
-    torus(g, 1.75, 0.018, MAT.blackGloss, x, y, 1.99, 0, 0, 0, 96);
+    torus(g, 1.75, 0.018, MAT.blackGloss, x, y, 1.99, 0, 0, 0, 128);
     // flat front face ring around the glass
-    add(g, new THREE.RingGeometry(1.5, 1.75, 96), MAT.lensRing, x, y, 2.025);
-    torus(g, 1.5, 0.012, MAT.blackGloss, x, y, 2.028, 0, 0, 0, 96);
+    add(g, new THREE.RingGeometry(1.5, 1.75, 128), MAT.lensRing, x, y, 2.025);
+    torus(g, 1.5, 0.012, MAT.blackGloss, x, y, 2.028, 0, 0, 0, 128);
     // inner stepped barrel (open tubes so the optics stay visible)
-    cylZ(g, 1.5, 1.52, 0.12, 72, MAT.blackGloss, x, y, 2.0, true);
-    cylZ(g, 1.36, 1.46, 0.16, 72, MAT.frame, x, y, 1.94, true);
+    cylZ(g, 1.5, 1.52, 0.12, 96, MAT.blackGloss, x, y, 2.0, true);
+    cylZ(g, 1.36, 1.46, 0.16, 96, MAT.frame, x, y, 1.94, true);
     // aperture + coating
-    add(g, new THREE.CircleGeometry(1.25, 72), new THREE.MeshBasicMaterial({
+    add(g, new THREE.CircleGeometry(1.25, 96), new THREE.MeshBasicMaterial({
       map: T.aperture(), toneMapped: false
     }), x, y, 2.012);
-    add(g, new THREE.CircleGeometry(1.08, 72), new THREE.MeshBasicMaterial({
-      map: T.lensCoating(), transparent: true, opacity: 0.9,
+    add(g, new THREE.CircleGeometry(1.08, 96), new THREE.MeshBasicMaterial({
+      // additive coating veil: kept below 0.7 so the dark optic still reads as
+      // glass instead of washing out into a pale disc under AgX tone mapping
+      map: T.lensCoating(), transparent: true, opacity: 0.6,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     }), x, y, 2.022);
     // front glass dome Φ20
-    const domeGeo = new THREE.SphereGeometry(1.0, 56, 28, 0, Math.PI * 2, 0, Math.PI / 2);
+    const domeGeo = new THREE.SphereGeometry(1.0, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
     domeGeo.rotateX(Math.PI / 2);
     const dome = new THREE.Mesh(domeGeo, MAT.lensGlass);
     dome.position.set(x, y, 2.026);
     dome.scale.set(1, 1, 0.07);
     dome.userData.noGlow = true;
     g.add(dome);
-    torus(g, 1.01, 0.014, MAT.blackGloss, x, y, 2.032, 0, 0, 0, 72);
-    // tiny thread notches on the protection ring
+    torus(g, 1.01, 0.014, MAT.blackGloss, x, y, 2.032, 0, 0, 0, 96);
+    // eight engraved index marks on the ring face. They used to be 1.3 mm tall
+    // black boxes half-buried in the ring, which read as loose black squares;
+    // now they are flat, matte and sit 0.065 mm proud of the machined face.
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
-      box(g, 0.055, 0.03, 0.13, MAT.blackGloss, x + Math.cos(a) * 1.62, y + Math.sin(a) * 1.62, 2.012, 0, 0, a);
+      box(g, 0.05, 0.024, 0.006, MAT.detailDark,
+        x + Math.cos(a) * 1.62, y + Math.sin(a) * 1.62, 2.0285, 0, 0, a);
     }
     // red index dot
-    add(g, new THREE.CircleGeometry(0.035, 12), MAT.red, x, y + 1.62, 2.032);
+    add(g, new THREE.CircleGeometry(0.035, 24), MAT.red, x, y + 1.62, 2.032);
     // rear connector pad
     box(g, 1.1, 0.48, 0.07, MAT.gold, x, y - 0.1, 1.6);
   }
@@ -503,7 +557,7 @@
     plane(g, 1.1, 0.92, new THREE.MeshBasicMaterial({
       map: T.lensCoating(), transparent: true, opacity: 0.2,
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
-    }), x, y, 1.52);
+    }), x, y, 1.524);
     rbox(g, 1.1, 0.38, 0.03, 0.04, MAT.copper, x - 0.4, y - 0.95, 1.24, 0, 0, 0.2);
     rbox(g, 0.5, 0.28, 0.07, 0.03, MAT.blackGloss, x - 0.95, y - 1.06, 1.24);
     [[-1.05, 0.85], [1.05, 0.85], [-1.05, -0.85], [1.05, -0.85]].forEach(function (p) {
@@ -515,26 +569,26 @@
     add(g, shellPlateGeo(W, H, 1.10, 0.1, CORNER), MAT.shell, 0, 0, 1.09);
     // subtle face rim
     // lens recess / collar
-    cylZ(g, 1.86, 1.9, 0.07, 64, MAT.frame, LENS.x, LENS.y, 1.655, true);
-    torus(g, 1.84, 0.02, MAT.blackGloss, LENS.x, LENS.y, 1.695, 0, 0, 0, 80);
-    // front screen recess
-    rbox(g, 2.92, 3.26, 0.05, 0.2, MAT.shellDark, SCR.x, SCR.y, 1.65);
+    cylZ(g, 1.86, 1.9, 0.07, 96, MAT.frame, LENS.x, LENS.y, 1.655, true);
+    torus(g, 1.84, 0.02, MAT.blackGloss, LENS.x, LENS.y, 1.695, 0, 0, 0, 96);
+    // front screen recess (dark gasket under the module, 2.5 mm below its trim)
+    rbox(g, 2.92, 3.26, 0.05, 0.2, MAT.shellDark, SCR.x, SCR.y, 1.6475);
     rbox(g, 2.8, 3.14, 0.02, 0.18, MAT.blackGloss, SCR.x, SCR.y, 1.68);
-    // OSMO ACTION 4 silk print, below the lens
-    plane(g, 3.3, 0.36, MAT.actionLogo, LENS.x, -1.8, 1.642);
-    // small front details
-    add(g, new THREE.CircleGeometry(0.03, 12), new THREE.MeshBasicMaterial({ color: 0x6ff7ff }), -0.9, -1.05, 1.643);
-    add(g, new THREE.CircleGeometry(0.028, 12), new THREE.MeshBasicMaterial({ color: 0x030506 }), -0.1, -1.15, 1.643);
-    add(g, new THREE.CircleGeometry(0.028, 12), new THREE.MeshBasicMaterial({ color: 0x030506 }), 2.1, -1.35, 1.643);
-    add(g, new THREE.CircleGeometry(0.065, 16), new THREE.MeshBasicMaterial({ color: 0x05070a }), 1.2, -1.2, 1.643);
-    // bottom vertical grille (speaker / mic slots)
+    // OSMO ACTION 4 silk print, below the lens (0.065 mm off the shell face)
+    plane(g, 3.3, 0.36, MAT.actionLogo, LENS.x, -1.8, 1.6465);
+    // small front details: lit recess discs instead of flat black stickers
+    add(g, new THREE.CircleGeometry(0.03, 16), new THREE.MeshBasicMaterial({ color: 0x6ff7ff }), -0.9, -1.05, 1.6465);
+    add(g, new THREE.CircleGeometry(0.028, 16), MAT.detailDark, -0.1, -1.15, 1.6465);
+    add(g, new THREE.CircleGeometry(0.028, 16), MAT.detailDark, 2.1, -1.35, 1.6465);
+    add(g, new THREE.CircleGeometry(0.065, 20), MAT.detailDark, 1.2, -1.2, 1.6465);
+    // bottom vertical grille (speaker / mic slots) — matte, low-contrast
     for (let i = 0; i < 13; i++) {
-      box(g, 0.012, 0.17, 0.008, MAT.blackGloss, 1.4 - 0.9 + i * 0.15, -2.07, 1.641);
+      box(g, 0.012, 0.17, 0.008, MAT.grilleDark, 1.4 - 0.9 + i * 0.15, -2.07, 1.6435);
     }
     // inner seal lip
-    const sealPts = roundedRectPoints(6.72, 4.1, 0.7, 0.56, 7);
+    const sealPts = roundedRectPoints(6.72, 4.1, 0.7, 0.56, 10);
     const sealCurve = new THREE.CatmullRomCurve3(sealPts, true, 'centripetal', 0.4);
-    add(g, new THREE.TubeGeometry(sealCurve, 150, 0.03, 8, true), MAT.rubber, 0, 0, 0);
+    add(g, new THREE.TubeGeometry(sealCurve, 200, 0.03, 10, true), MAT.rubber, 0, 0, 0);
   }
 
   function buildFrontScreen(g) {
@@ -542,15 +596,15 @@
     rbox(g, 2.9, 3.24, 0.035, 0.2, MAT.frame, SCR.x, SCR.y, 1.66);
     // glossy black module
     rbox(g, 2.78, 3.12, 0.1, 0.18, MAT.screenBezel, SCR.x, SCR.y, 1.69);
-    // 320×320 active panel
-    plane(g, SCR.active, SCR.active, MAT.screenFront, SCR.x, SCR.activeY, 1.743);
-    // cover glass
-    rbox(g, 2.68, 3.02, 0.018, 0.16, MAT.glass, SCR.x, SCR.y, 1.748).userData.noGlow = true;
+    // 320×320 active panel (7.5 µm above the bezel face)
+    plane(g, SCR.active, SCR.active, MAT.screenFront, SCR.x, SCR.activeY, 1.7475);
+    // cover glass, stacked 3.5 µm above the panel so the two planes never fight
+    rbox(g, 2.68, 3.02, 0.018, 0.16, MAT.glass, SCR.x, SCR.y, 1.76).userData.noGlow = true;
     // dji mark lower-left of the module
-    plane(g, 0.65, 0.245, MAT.logo, -2.6, -1.18, 1.746);
-    // flex tail
+    plane(g, 0.65, 0.245, MAT.logo, -2.6, -1.18, 1.7705);
+    // flex tail (tucked behind the cover, visible once the screen is explodable)
     rbox(g, 0.44, 0.55, 0.022, 0.03, MAT.copper, SCR.x + 0.2, -1.58, 1.61, 0.15, 0, 0);
-    rbox(g, 0.26, 0.26, 0.05, 0.02, MAT.blackGloss, SCR.x + 0.2, -1.74, 1.63);
+    rbox(g, 0.26, 0.26, 0.05, 0.02, MAT.rubber, SCR.x + 0.2, -1.74, 1.605);
   }
 
   function buildMainboard(g) {
@@ -592,7 +646,7 @@
       new THREE.Vector3(1.9, 0.1, z - 0.01),
       new THREE.Vector3(2.45, -0.3, z)
     ]);
-    add(g, new THREE.TubeGeometry(curve, 64, 0.06, 9, false), MAT.copper, 0, 0, 0);
+    add(g, new THREE.TubeGeometry(curve, 96, 0.06, 12, false), MAT.copper, 0, 0, 0);
     for (let i = 0; i < 10; i++) {
       box(g, 0.04, 1.35, 0.46, MAT.aluminum, 0.05 + i * 0.26, -0.28, z - 0.29);
     }
@@ -608,7 +662,7 @@
     rbox(g, bw, bh, bd, 0.14, MAT.shellDark, bx, by, bz);
     // label on the outward (-X) face
     const label = new THREE.Mesh(new THREE.PlaneGeometry(bd - 0.14, bh - 0.14), MAT.batteryLabel);
-    label.position.set(bx - bw / 2 - 0.002, by, bz);
+    label.position.set(bx - bw / 2 - 0.008, by, bz);
     label.rotation.y = -Math.PI / 2;
     g.add(label);
     const orange = new THREE.MeshStandardMaterial({ color: 0xf59e2c, metalness: 0.2, roughness: 0.52 });
@@ -630,9 +684,9 @@
     const dx = -HW - 0.015, dy = 0, dz = 0;
     rbox(g, 0.16, 4.1, 2.8, 0.16, MAT.shell, dx, dy, dz);
     rbox(g, 0.06, 3.86, 2.56, 0.13, MAT.shellDark, dx - 0.09, dy, dz);
-    // texture ridges
+    // texture ridges (sit on the dark inset panel, not buried inside it)
     for (let i = 0; i < 8; i++) {
-      box(g, 0.024, 3.2, 0.03, MAT.blackGloss, dx - 0.085, dy - 0.1, dz - 0.55 + i * 0.16);
+      box(g, 0.02, 3.2, 0.03, MAT.graphite, dx - 0.122, dy - 0.1, dz - 0.55 + i * 0.16);
     }
     // unlock button (front-lower area)
     rbox(g, 0.12, 0.55, 0.32, 0.08, MAT.frame, dx - 0.09, dy - 1.28, dz + 0.88);
@@ -645,7 +699,7 @@
     cylY(g, 0.06, 0.06, 0.4, 14, MAT.frame, dx - 0.02, dy + 0.85, dz - 1.27);
     cylY(g, 0.06, 0.06, 0.4, 14, MAT.frame, dx - 0.02, dy - 0.85, dz - 1.27);
     // dji silk print
-    plane(g, 0.52, 0.195, MAT.logo, dx - 0.083, dy + 0.2, dz + 0.4, 0, -Math.PI / 2, 0);
+    plane(g, 0.52, 0.195, MAT.logo, dx - 0.127, dy + 0.2, dz + 0.4, 0, -Math.PI / 2, 0);
     // inner rubber seal
     rbox(g, 0.03, 3.55, 2.35, 0.12, MAT.rubber, dx - 0.055, dy, dz);
     // tiny direction arrow moulded next to the unlock key
@@ -682,19 +736,19 @@
     // status LED II (back top, +X side)
     box(g, 0.24, 0.035, 0.012, new THREE.MeshBasicMaterial({ color: 0x77ffb0, toneMapped: false }), 2.7, 1.8, -1.647);
     // gasket lip
-    const sealPts = roundedRectPoints(6.72, 4.1, 0.7, -0.56, 7);
+    const sealPts = roundedRectPoints(6.72, 4.1, 0.7, -0.56, 10);
     const sealCurve = new THREE.CatmullRomCurve3(sealPts, true, 'centripetal', 0.4);
-    add(g, new THREE.TubeGeometry(sealCurve, 150, 0.03, 8, true), MAT.rubber, 0, 0, 0);
+    add(g, new THREE.TubeGeometry(sealCurve, 200, 0.03, 10, true), MAT.rubber, 0, 0, 0);
   }
 
   function buildRearScreen(g) {
     // metal carrier + glossy bezel
     rbox(g, 5.26, 3.04, 0.05, 0.25, MAT.frame, 0, 0, -1.69);
     rbox(g, 5.14, 2.92, 0.1, 0.22, MAT.screenBezel, 0, 0, -1.72);
-    // 640×360 active panel (16:9)
-    plane(g, 4.99, 2.81, MAT.screenRear, 0, 0, -1.792, 0, Math.PI, 0);
-    // cover glass
-    rbox(g, 5.02, 2.84, 0.018, 0.2, MAT.glass, 0, 0, -1.798).userData.noGlow = true;
+    // 640×360 active panel (7.5 µm above the bezel face)
+    plane(g, 4.99, 2.81, MAT.screenRear, 0, 0, -1.7775, 0, Math.PI, 0);
+    // cover glass, stacked 3.5 µm above the panel so the two planes never fight
+    rbox(g, 5.02, 2.84, 0.018, 0.2, MAT.glass, 0, 0, -1.79).userData.noGlow = true;
     // FPC tail toward mainboard
     rbox(g, 0.62, 1.9, 0.028, 0.03, MAT.copper, 2.0, -0.2, -1.63, 0.2, 0.25, 0.1);
     rbox(g, 0.3, 0.28, 0.05, 0.02, MAT.blackGloss, 2.08, -1.1, -1.63);
@@ -704,16 +758,16 @@
   function buildButtons(g) {
     // shooting button: top, -X side, front edge
     const sx = -1.2, sz = 0.4;
-    cylY(g, 0.67, 0.7, 0.08, 48, MAT.frame, sx, HH + 0.04, sz);
-    torus(g, 0.55, 0.055, MAT.red, sx, HH + 0.095, sz, Math.PI / 2, 0, 0, 64);
-    cylY(g, 0.43, 0.43, 0.22, 48, MAT.blackGloss, sx, HH + 0.19, sz);
-    add(g, new THREE.CircleGeometry(0.41, 48), MAT.frame, sx, HH + 0.305, sz, -Math.PI / 2);
-    torus(g, 0.26, 0.008, MAT.blackGloss, sx, HH + 0.308, sz, -Math.PI / 2, 0, 0, 48);
+    cylY(g, 0.67, 0.7, 0.08, 64, MAT.frame, sx, HH + 0.04, sz);
+    torus(g, 0.55, 0.055, MAT.red, sx, HH + 0.095, sz, Math.PI / 2, 0, 0, 80);
+    cylY(g, 0.43, 0.43, 0.22, 64, MAT.blackGloss, sx, HH + 0.19, sz);
+    add(g, new THREE.CircleGeometry(0.41, 64), MAT.frame, sx, HH + 0.305, sz, -Math.PI / 2);
+    torus(g, 0.26, 0.008, MAT.blackGloss, sx, HH + 0.308, sz, -Math.PI / 2, 0, 0, 64);
     // top speaker: four holes on the lens side, front edge
     for (let i = 0; i < 4; i++) {
       const ox = (i % 2) * 0.18, oz = Math.floor(i / 2) * 0.14;
-      add(g, new THREE.CircleGeometry(0.055, 12), MAT.blackGloss, 2.0 + ox, HH + 0.003, 0.98 + oz, -Math.PI / 2, 0, 0);
-      torus(g, 0.062, 0.005, MAT.aluminum, 2.0 + ox, HH + 0.004, 0.98 + oz, -Math.PI / 2, 0, 0, 16);
+      add(g, new THREE.CircleGeometry(0.055, 20), MAT.grilleDark, 2.0 + ox, HH + 0.003, 0.98 + oz, -Math.PI / 2, 0, 0);
+      torus(g, 0.062, 0.005, MAT.aluminum, 2.0 + ox, HH + 0.004, 0.98 + oz, -Math.PI / 2, 0, 0, 24);
     }
     // QS key: right side, upper, slightly forward
     const qx = HW + 0.055, qy = 0.92, qz = 0.22;
@@ -722,7 +776,7 @@
     // shutter seat plate
     rbox(g, 1.55, 0.035, 1.3, 0.12, MAT.shellDark, sx, HH + 0.004, sz);
     // tiny LED near shutter
-    add(g, new THREE.CircleGeometry(0.03, 12), new THREE.MeshBasicMaterial({ color: 0x111417 }), -2.55, HH + 0.003, 0.9, -Math.PI / 2);
+    add(g, new THREE.CircleGeometry(0.03, 16), MAT.detailDark, -2.55, HH + 0.003, 0.9, -Math.PI / 2);
   }
 
   function buildMount(g) {
@@ -730,10 +784,10 @@
     const my = -HH - 0.1;
     rbox(g, 4.6, 0.18, 2.6, 0.26, MAT.mountMetal, 0, my, 0);
     rbox(g, 4.3, 0.035, 2.3, 0.2, MAT.graphite, 0, my - 0.09, 0);
-    // magnetic plate zones
+    // magnetic plate zones (discs sit just proud of the graphite face)
     [[-0.68, -0.55], [0.68, -0.55], [-0.68, 0.55], [0.68, 0.55]].forEach(function (p) {
-      cylY(g, 0.38, 0.38, 0.03, 32, MAT.blackGloss, p[0], my - 0.09, p[1]);
-      torus(g, 0.3, 0.02, MAT.copper, p[0], my - 0.105, p[1], Math.PI / 2, 0, 0, 40);
+      cylY(g, 0.38, 0.38, 0.03, 48, MAT.blackGloss, p[0], my - 0.112, p[1]);
+      torus(g, 0.3, 0.02, MAT.copper, p[0], my - 0.128, p[1], Math.PI / 2, 0, 0, 64);
     });
     // two quick-release slots at X ≈ ±11 mm
     [-1.1, 1.1].forEach(function (sx) {
@@ -790,9 +844,9 @@
     rbox(g, 4.5, 2.7, 0.02, 0.08, MAT.graphite, 0.8, 0.05, -0.27);
     // front and rear seal rings
     [0.56, -0.56].forEach(function (z) {
-      const pts = roundedRectPoints(6.6, 4.0, 0.72, z, 7);
+      const pts = roundedRectPoints(6.6, 4.0, 0.72, z, 10);
       const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal', 0.4);
-      add(g, new THREE.TubeGeometry(curve, 170, 0.038, 8, true), MAT.rubber, 0, 0, 0);
+      add(g, new THREE.TubeGeometry(curve, 200, 0.038, 10, true), MAT.rubber, 0, 0, 0);
     });
     // bottom anti-wind mic housing
     add(g, new THREE.CircleGeometry(0.05, 12), MAT.blackGloss, -2.55, -HH - 0.001, 0.62, Math.PI / 2, 0, 0);
