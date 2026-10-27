@@ -1,0 +1,497 @@
+{
+  "sameItemTwice": {
+    "firstClick": {
+      "selected": "lens",
+      "exploded": true
+    },
+    "secondClick": {
+      "selected": null,
+      "exploded": true
+    }
+  },
+  "labelsSettled": {
+    "dom": 14,
+    "visible": 14,
+    "pct": "100%",
+    "hidden": [],
+    "selected": null
+  },
+  "canvasPicking": [
+    {
+      "id": "lens",
+      "point": {
+        "x": 823,
+        "y": 513
+      },
+      "hit": "lens",
+      "exact": true,
+      "any": true
+    },
+    {
+      "id": "frontScreen",
+      "point": {
+        "x": 530,
+        "y": 488
+      },
+      "hit": "frontScreen",
+      "exact": true,
+      "any": true
+    },
+    {
+      "id": "frontCover",
+      "point": {
+        "x": 732,
+        "y": 497
+      },
+      "hit": "lens",
+      "exact": false,
+      "any": true
+    },
+    {
+      "id": "buttons",
+      "point": {
+        "x": 825,
+        "y": 314
+      },
+      "hit": "lens",
+      "exact": false,
+      "any": true
+    },
+    {
+      "id": "mount",
+      "point": {
+        "x": 800,
+        "y": 704
+      },
+      "hit": "lens",
+      "exact": false,
+      "any": true
+    },
+    {
+      "id": "batteryDoor",
+      "point": {
+        "x": 524,
+        "y": 431
+      },
+      "hit": "frontScreen",
+      "exact": false,
+      "any": true
+    },
+    {
+      "id": "usbDoor",
+      "point": {
+        "x": 1181,
+        "y": 610
+      },
+      "hit": "usbDoor",
+      "exact": true,
+      "any": true
+    }
+  ],
+  "centerClick": {
+    "hit": "lens"
+  },
+  "hover": [
+    {
+      "id": "lens",
+      "point": {
+        "x": 828,
+        "y": 513
+      },
+      "visible": true,
+      "name": "镜头模组",
+      "cursor": "pointer"
+    },
+    {
+      "id": "frontCover",
+      "point": {
+        "x": 731,
+        "y": 492
+      },
+      "visible": true,
+      "name": "镜头模组",
+      "cursor": "pointer"
+    },
+    {
+      "id": "mount",
+      "point": {
+        "x": 800,
+        "y": 705
+      },
+      "visible": true,
+      "name": "镜头模组",
+      "cursor": "pointer"
+    },
+    {
+      "id": "buttons",
+      "point": {
+        "x": 824,
+        "y": 322
+      },
+      "visible": true,
+      "name": "镜头模组",
+      "cursor": "pointer"
+    }
+  ],
+  "focusSelected": {
+    "disabled": false,
+    "movedAway": 9.1,
+    "movedFocus": 9.07
+  },
+  "params": {
+    "mismatchPage": [],
+    "mismatchDoc": [
+      {
+        "label": "亮度 750 nit",
+        "token": "750nit",
+        "inPage": true,
+        "docToken": "750nit",
+        "inDoc": false
+      },
+      {
+        "label": "电池仓盖 41×28",
+        "token": "41×28",
+        "inPage": true,
+        "docToken": "41×28",
+        "inDoc": false
+      },
+      {
+        "label": "USB-C 盖 17×13",
+        "token": "17×13",
+        "inPage": true,
+        "docToken": "17×13",
+        "inDoc": false
+      },
+      {
+        "label": "触控策略 前后屏不能同时触控",
+        "token": "前后屏不能同时触控",
+        "inPage": true,
+        "docToken": "前后屏不能同时触控",
+        "inDoc": false
+      }
+    ],
+    "rows": [
+      {
+        "label": "镜头 Φ35",
+        "token": "Φ35",
+        "inPage": true,
+        "docToken": "Φ35",
+        "inDoc": true
+      },
+      {
+        "label": "光圈 f/2.8",
+        "token": "f/2.8",
+        "inPage": true,
+        "docToken": "f/2.8",
+        "inDoc": true
+      },
+      {
+        "label": "视场角 155°",
+        "token": "155°",
+        "inPage": true,
+        "docToken": "155°",
+        "inDoc": true
+      },
+      {
+        "label": "前屏 1.4 英寸",
+        "token": "1.4英寸",
+        "inPage": true,
+        "docToken": "1.4英寸",
+        "inDoc": true
+      },
+      {
+        "label": "前屏 320×320",
+        "token": "320×320",
+        "inPage": true,
+        "docToken": "320×320",
+        "inDoc": true
+      },
+      {
+        "label": "后屏 2.25 英寸",
+        "token": "2.25英寸",
+        "inPage": true,
+        "docToken": "2.25英寸",
+        "inDoc": true
+      },
+      {
+        "label": "后屏 640×360",
+        "token": "640×360",
+        "inPage": true,
+        "docToken": "640×360",
+        "inDoc": true
+      },
+      {
+        "label": "电池 1770 mAh",
+        "token": "1770mAh",
+        "inPage": true,
+        "docToken": "1770mAh",
+        "inDoc": true
+      },
+      {
+        "label": "电池 6.8 Wh",
+        "token": "6.8Wh",
+        "inPage": true,
+        "docToken": "6.8Wh",
+        "inDoc": true
+      },
+      {
+        "label": "电池 3.85 V",
+        "token": "3.85V",
+        "inPage": true,
+        "docToken": "3.85V",
+        "inDoc": true
+      },
+      {
+        "label": "尺寸 70.5×44.2×32.8 mm",
+        "token": "70.5×44.2×32.8mm",
+        "inPage": true,
+        "docToken": "70.5×44.2×32.8mm",
+        "inDoc": true
+      },
+      {
+        "label": "重量 145 g",
+        "token": "145g",
+        "inPage": true,
+        "docToken": "145g",
+        "inDoc": true
+      },
+      {
+        "label": "防水 18 m",
+        "token": "18m",
+        "inPage": true,
+        "docToken": "18m",
+        "inDoc": true
+      },
+      {
+        "label": "续航 160 分钟",
+        "token": "160分钟",
+        "inPage": true,
+        "docToken": "160min",
+        "inDoc": true
+      },
+      {
+        "label": "充电 18 min 充至 80%",
+        "token": "18min充至80%",
+        "inPage": true,
+        "docToken": "18min充至80%",
+        "inDoc": true
+      },
+      {
+        "label": "充电 49 min 充满",
+        "token": "49min充满",
+        "inPage": true,
+        "docToken": "49min充满",
+        "inDoc": true
+      },
+      {
+        "label": "码流 130 Mbps",
+        "token": "130Mbps",
+        "inPage": true,
+        "docToken": "130Mbps",
+        "inDoc": true
+      },
+      {
+        "label": "色彩 10-bit D-Log M",
+        "token": "10-bitD-LogM",
+        "inPage": true,
+        "docToken": "10-bitD-LogM",
+        "inDoc": true
+      },
+      {
+        "label": "像素 3648×2736",
+        "token": "3648×2736",
+        "inPage": true,
+        "docToken": "3648×2736",
+        "inDoc": true
+      },
+      {
+        "label": "前屏 323 ppi",
+        "token": "323ppi",
+        "inPage": true,
+        "docToken": "323ppi",
+        "inDoc": true
+      },
+      {
+        "label": "后屏 326 ppi",
+        "token": "326ppi",
+        "inPage": true,
+        "docToken": "326ppi",
+        "inDoc": true
+      },
+      {
+        "label": "亮度 750 nit",
+        "token": "750nit",
+        "inPage": true,
+        "docToken": "750nit",
+        "inDoc": false
+      },
+      {
+        "label": "麦克风 3 个（前2+底部防风1）",
+        "token": "3个（前2+底部防风1）",
+        "inPage": true,
+        "docToken": "3个（前2+底部防风1）",
+        "inDoc": true
+      },
+      {
+        "label": "音频 48 kHz 16-bit AAC",
+        "token": "48kHz16-bitAAC",
+        "inPage": true,
+        "docToken": "48kHz16-bitAAC",
+        "inDoc": true
+      },
+      {
+        "label": "存储 microSD ≤512 GB / exFAT / 无内置存储",
+        "token": "microSD≤512GB",
+        "inPage": true,
+        "docToken": "microSD≤512GB",
+        "inDoc": true
+      },
+      {
+        "label": "无线 Wi-Fi 802.11 a/b/g/n/ac + BLE 5.0",
+        "token": "802.11a/b/g/n/ac",
+        "inPage": true,
+        "docToken": "802.11a/b/g/n/ac",
+        "inDoc": true
+      },
+      {
+        "label": "温度 -20°C~45°C 使用 / 5°C~40°C 充电",
+        "token": "-20°C~45°C",
+        "inPage": true,
+        "docToken": "-20℃~45℃",
+        "inDoc": true
+      },
+      {
+        "label": "前盖圆角 R3",
+        "token": "R3",
+        "inPage": true,
+        "docToken": "R3",
+        "inDoc": true
+      },
+      {
+        "label": "电池仓盖 41×28",
+        "token": "41×28",
+        "inPage": true,
+        "docToken": "41×28",
+        "inDoc": false
+      },
+      {
+        "label": "USB-C 盖 17×13",
+        "token": "17×13",
+        "inPage": true,
+        "docToken": "17×13",
+        "inDoc": false
+      },
+      {
+        "label": "磁吸面 46×26",
+        "token": "46×26",
+        "inPage": true,
+        "docToken": "46×26",
+        "inDoc": true
+      },
+      {
+        "label": "视频 4K16:9 ≤120fps",
+        "token": "4K16:9≤120fps",
+        "inPage": true,
+        "docToken": "4K16:9≤120fps",
+        "inDoc": true
+      },
+      {
+        "label": "慢动作 1080p ≤240fps",
+        "token": "240fps",
+        "inPage": true,
+        "docToken": "240fps",
+        "inDoc": true
+      },
+      {
+        "label": "对焦 0.4m ~ ∞",
+        "token": "0.4m~∞",
+        "inPage": true,
+        "docToken": "0.4m~∞",
+        "inDoc": true
+      },
+      {
+        "label": "触控策略 前后屏不能同时触控",
+        "token": "前后屏不能同时触控",
+        "inPage": true,
+        "docToken": "前后屏不能同时触控",
+        "inDoc": false
+      }
+    ]
+  },
+  "hlg": {
+    "pageHasHLG": true,
+    "docHasHLG": false
+  },
+  "specsTextExcerpt": "1/1.3\"\nCMOS SENSOR · 155° ULTRA WIDE · 4K/120\n影像系统\nIMAGING\n传感器\n1/1.3 英寸 CMOS\n照片\n3648 × 2736 · 约 1000 万像素\n光圈\nf/2.8\n视场角\n155°（对角）\n对焦范围\n0.4 m ~ ∞\n视频\n4K 16:9 ≤120fps · 4K 4:3 ≤60fps\n慢动作\n1080p ≤240fps / 4K ≤120fps\n编码 / 码流\nMP4 · H.264 / HEVC · 130 Mbps\n色彩\n10-bit D-Log M / HLG\n防抖与增稳\nSTABILISATION\n防抖算法\nRockSteady 3.0 / 3.0+\n地平线校正\nHorizonBalancing\n地平线增稳\nHorizonSteady\n实现方式\n电子增稳（EIS）\n显示与操控\nDISPLAY\n前置屏\n1.4 英寸 · 320×320 · 323 ppi · 750 nit · 触控\n后置屏\n2.25 英寸 · 640×360 · 326 ppi · 750 nit · 触控\n触控策略\n前后屏不能同时触控\n按键\n拍摄按键（红环）/ QS 快速切换\n防水\n裸机 18 m · IP68（加壳 60 m）\n机身与电池\nHARDWARE\n尺寸\n70.5 × 44.2 × 32.8 mm\n重量\n145 g\n电池\n耐寒长续航电池 · LiPo 1S\n容量 / 能量\n1770 mAh / 6.8 Wh / 3.85 V\n续航\n约 160 分钟（1080p/24fps）\n充电\n30 W：18 min 充至 80% · 49 min 充满\n温度\n-20°C ~ 45°C 使用 / 5°C ~ 40°C 充电\n连接 · 存储 · 音频\nCONNECTIVITY\n无线\nWi-Fi 802.11 a/b/g/n/ac · BLE 5.0\nUSB\nUSB-C 充电 / 数据传输\n存储\nmicroSD ≤512 GB · exFAT / 无内置存储\n麦克风\n3 个（前 2 + 底部防风 1）\n音频\n48 kHz 16-bit AAC\n安装\nDJI 磁吸快拆 + 双侧卡槽\n规格数据来源于 DJI 官方资料 · 部分内部结构为可视化示意",
+  "mobileGuide": {
+    "guideDisplay": "flex",
+    "guideRect": [
+      340,
+      14,
+      36,
+      36
+    ],
+    "visibleButtons": [
+      "btnMobileParts|部件",
+      "btnMobileInfo|详情",
+      "btnGuide|操作指南\n        ?",
+      "|01镜头模组Φ35LENS MODULE",
+      "|021/1.3\" CMOS1/1.3\"I",
+      "|03前盖组件复合材质FRONT COVE",
+      "|041.4\" 前置屏1.4\"FRONT ",
+      "|05主板SoCMAINBOARD›",
+      "|06散热系统铜均热板COOLING SY",
+      "|071770mAh 电池1770mAhE",
+      "|08电池仓盖左侧BATTERY DOOR",
+      "|09USB-C 保护盖右侧USB-C D",
+      "|10后盖组件2.25\" 屏框REAR C",
+      "|112.25\" 触控屏2.25\"REAR",
+      "|12按键组快门红环BUTTONS & S",
+      "|13磁吸快拆底座46×26 磁吸面MAG",
+      "|14一体化中框结构骨架MID FRAME",
+      "|部件详情",
+      "|整机规格",
+      "btnCloseInfo|收起详情",
+      "btnFocusSelected|定位所选",
+      "btnExplode|一键拆解",
+      "btnReset|复位视角",
+      "btnAutoRotate|自动旋转",
+      "btnLabels|标注",
+      "btnFocusCam|自动视角"
+    ],
+    "guideModalHidden": true,
+    "anyVisibleGuideText": true
+  },
+  "mobileLabels": {
+    "before": {
+      "on": true,
+      "visible": 0,
+      "display": "none"
+    },
+    "after": {
+      "on": false,
+      "visible": 0,
+      "display": "none",
+      "pressed": "false"
+    }
+  },
+  "mobileToastOverlap": {
+    "toastVisible": true,
+    "toastRect": [
+      98,
+      66,
+      293,
+      114
+    ],
+    "panelRect": [
+      10,
+      68,
+      330,
+      758
+    ],
+    "overlap": true,
+    "overlapArea": 8970,
+    "toastZ": "60",
+    "panelZ": "40"
+  }
+}

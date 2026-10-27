@@ -1,0 +1,274 @@
+[
+  {
+    "innerWidth": 390,
+    "innerHeight": 844,
+    "visualViewportWidth": 390,
+    "docClientWidth": 390,
+    "mq430": true,
+    "mq960": true,
+    "kids": [
+      {
+        "n": 1,
+        "id": "btnMobileParts",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          256,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 2,
+        "id": "btnMobileInfo",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          298,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 3,
+        "id": "btnGuide",
+        "cls": "icon-btn",
+        "display": "flex",
+        "rect": [
+          340,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 4,
+        "id": "btnFullscreen",
+        "cls": "icon-btn",
+        "display": "none",
+        "rect": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "topbarActionsRect": [
+      256,
+      14,
+      120,
+      36
+    ],
+    "dpr": 1,
+    "isMobileUA": false,
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+    "label": "mobile-first-390"
+  },
+  {
+    "innerWidth": 390,
+    "innerHeight": 844,
+    "visualViewportWidth": 390,
+    "docClientWidth": 390,
+    "mq430": true,
+    "mq960": true,
+    "kids": [
+      {
+        "n": 1,
+        "id": "btnMobileParts",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          256,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 2,
+        "id": "btnMobileInfo",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          298,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 3,
+        "id": "btnGuide",
+        "cls": "icon-btn",
+        "display": "flex",
+        "rect": [
+          340,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 4,
+        "id": "btnFullscreen",
+        "cls": "icon-btn",
+        "display": "none",
+        "rect": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "topbarActionsRect": [
+      256,
+      14,
+      120,
+      36
+    ],
+    "dpr": 1,
+    "isMobileUA": false,
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+    "label": "mobile-after-desktop-390"
+  },
+  {
+    "innerWidth": 390,
+    "innerHeight": 844,
+    "visualViewportWidth": 390,
+    "docClientWidth": 390,
+    "mq430": true,
+    "mq960": true,
+    "kids": [
+      {
+        "n": 1,
+        "id": "btnMobileParts",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          256,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 2,
+        "id": "btnMobileInfo",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          298,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 3,
+        "id": "btnGuide",
+        "cls": "icon-btn",
+        "display": "flex",
+        "rect": [
+          340,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 4,
+        "id": "btnFullscreen",
+        "cls": "icon-btn",
+        "display": "none",
+        "rect": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "topbarActionsRect": [
+      256,
+      14,
+      120,
+      36
+    ],
+    "dpr": 1,
+    "isMobileUA": false,
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+    "label": "mobile-390-no-isMobile"
+  },
+  {
+    "innerWidth": 430,
+    "innerHeight": 844,
+    "visualViewportWidth": 430,
+    "docClientWidth": 430,
+    "mq430": true,
+    "mq960": true,
+    "kids": [
+      {
+        "n": 1,
+        "id": "btnMobileParts",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          296,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 2,
+        "id": "btnMobileInfo",
+        "cls": "icon-btn only-mobile",
+        "display": "flex",
+        "rect": [
+          338,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 3,
+        "id": "btnGuide",
+        "cls": "icon-btn",
+        "display": "flex",
+        "rect": [
+          380,
+          14,
+          36,
+          36
+        ]
+      },
+      {
+        "n": 4,
+        "id": "btnFullscreen",
+        "cls": "icon-btn",
+        "display": "none",
+        "rect": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "topbarActionsRect": [
+      296,
+      14,
+      120,
+      36
+    ],
+    "dpr": 1,
+    "isMobileUA": false,
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
+    "label": "mobile-430"
+  }
+]

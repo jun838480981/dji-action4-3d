@@ -1,0 +1,16 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# dependencies / build caches (the page ships a pre-built vendor bundle)
+node_modules/
+_build/
+dist/
+.cache/
+
+# local QA output that is not part of the report snapshot
+qa/*.png
+qa/*.json
+qa/*.txt

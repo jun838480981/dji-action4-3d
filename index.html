@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#04070d">
+<title>DJI Osmo Action 4 · 3D 拆解实验室</title>
+<meta name="description" content="DJI Osmo Action 4 三维交互拆解可视化：程序化建模、点击拆解、部件参数与自由视角。Three.js + 原生 JavaScript，无外部模型文件。">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main id="app">
+  <canvas id="scene" aria-label="DJI Osmo Action 4 三维拆解视图"></canvas>
+
+  <!-- ── 环境效果层 ─────────────────────────────── -->
+  <div class="fx-vignette" aria-hidden="true"></div>
+  <div class="fx-scanlines" aria-hidden="true"></div>
+  <div class="fx-glow fx-glow-a" aria-hidden="true"></div>
+  <div class="fx-glow fx-glow-b" aria-hidden="true"></div>
+  <div class="hud-frame" aria-hidden="true">
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+  </div>
+
+  <!-- ── 顶栏 ───────────────────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <span class="bm-ring bm-ring-1"></span>
+        <span class="bm-ring bm-ring-2"></span>
+        <span class="bm-lens"></span>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-title">
+          <span class="brand-dji">DJI</span>
+          <span class="brand-product">OSMO ACTION 4</span>
+          <span class="brand-slash">/</span>
+          <span class="brand-lab">TEARDOWN LAB</span>
+        </div>
+        <div class="brand-sub">三维交互拆解 · 程序化建模 · 无外部模型</div>
+      </div>
+    </div>
+
+    <div class="topbar-status" id="topStatus">
+      <span class="status-dot"></span>
+      <span class="status-code" id="statusCode">WEBGL · ONLINE</span>
+      <span class="status-sep"></span>
+      <span class="status-meta" id="statusMeta">14 PARTS / 1/1.3" CMOS</span>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="icon-btn only-mobile" id="btnMobileParts" type="button" aria-label="打开部件清单">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h9"/></svg>
+        <span>部件</span>
+      </button>
+      <button class="icon-btn only-mobile" id="btnMobileInfo" type="button" aria-label="打开部件详情">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M10 9v5M10 6.2v.4"/></svg>
+        <span>详情</span>
+      </button>
+      <button class="icon-btn" id="btnGuide" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.2"/><path d="M8.2 7.7a1.9 1.9 0 1 1 2.6 1.8c-.6.2-.9.7-.9 1.3v.3M10 14v.4"/></svg>
+        <span>操作指南</span>
+        <kbd>?</kbd>
+      </button>
+      <button class="icon-btn" id="btnFullscreen" type="button" aria-label="全屏">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4"/></svg>
+        <span class="btn-label">全屏</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── 左侧部件清单 ───────────────────────────── -->
+  <aside class="panel panel-left" id="panelParts" aria-label="部件清单">
+    <div class="panel-head">
+      <div>
+        <div class="panel-kicker"><i></i>COMPONENTS</div>
+        <h2 class="panel-title">部件清单</h2>
+      </div>
+      <div class="part-count"><b id="partCount">14</b><span>PARTS</span></div>
+    </div>
+
+    <div class="quick-stats">
+      <div class="qs-item"><b>70.5<span>×</span>44.2<span>×</span>32.8</b><span>mm 机身尺寸</span></div>
+      <div class="qs-item"><b>145</b><span>g 整机重量</span></div>
+      <div class="qs-item"><b>18</b><span>m 裸机防水</span></div>
+    </div>
+
+    <div class="partlist" id="partList" role="list"></div>
+
+    <div class="panel-foot">
+      <span class="foot-dot"></span>
+      <span>点击部件 → 拆解 · 定位 · 查看参数</span>
+    </div>
+  </aside>
+
+  <!-- ── 右侧详情面板 ───────────────────────────── -->
+  <aside class="panel panel-right" id="panelInfo" aria-label="部件详情与整机规格">
+    <div class="info-tabs" role="tablist">
+      <button class="info-tab is-active" data-tab="detail" role="tab" aria-selected="true" type="button">部件详情</button>
+      <button class="info-tab" data-tab="specs" role="tab" aria-selected="false" type="button">整机规格</button>
+      <span class="tab-underline" id="tabUnderline"></span>
+    </div>
+
+    <div class="info-body" id="infoBody">
+      <!-- JS 渲染 -->
+    </div>
+
+    <div class="info-foot">
+      <div class="meter-label"><span>EXPLODE PROGRESS</span><b id="explodePct">00%</b></div>
+      <div class="meter"><i id="explodeMeter"></i></div>
+      <div class="info-foot-actions">
+        <button class="mini-btn" id="btnCloseInfo" type="button">收起详情</button>
+        <button class="mini-btn accent" id="btnFocusSelected" type="button">定位所选</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── 3D 标注层 ──────────────────────────────── -->
+  <div class="labels-layer" id="labelsLayer" aria-hidden="true">
+    <svg class="leader-svg" id="leaderSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="label-nodes" id="labelNodes"></div>
+  </div>
+
+  <!-- 悬浮提示 -->
+  <div class="hover-tag" id="hoverTag" aria-hidden="true">
+    <span class="hover-tag-index" id="hoverIndex">01</span>
+    <span class="hover-tag-name" id="hoverName">镜头模组</span>
+    <span class="hover-tag-hint">点击拆解</span>
+  </div>
+
+  <!-- ── 底部操作坞 ─────────────────────────────── -->
+  <div class="dock" id="dock">
+    <div class="dock-main">
+      <button class="dock-btn primary" id="btnExplode" type="button">
+        <svg viewBox="0 0 22 22" aria-hidden="true"><path d="M11 3v4M11 15v4M3 11h4M15 11h4"/><circle cx="11" cy="11" r="3.2"/></svg>
+        <span id="explodeLabel">一键拆解</span>
+      </button>
+      <button class="dock-btn" id="btnReset" type="button">
+        <svg viewBox="0 0 22 22" aria-hidden="true"><path d="M4.4 10a6.8 6.8 0 1 1 1.8 5.4"/><path d="M4.2 5.8v4.4h4.4"/></svg>
+        <span>复位视角</span>
+      </button>
+    </div>
+    <span class="dock-divider" aria-hidden="true"></span>
+    <div class="dock-toggles">
+      <button class="toggle-btn" id="btnAutoRotate" type="button" aria-pressed="false">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.6 8.2A6 6 0 1 0 16 12"/><path d="M16 4v4.4h-4.4"/></svg>
+        <span>自动旋转</span>
+      </button>
+      <button class="toggle-btn is-on" id="btnLabels" type="button" aria-pressed="true">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h8.5L17 10l-5.5 4.5H3z"/><path d="M6 10h5"/></svg>
+        <span>标注</span>
+      </button>
+      <button class="toggle-btn is-on" id="btnFocusCam" type="button" aria-pressed="true">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/><circle cx="10" cy="10" r="2.4"/></svg>
+        <span>自动视角</span>
+      </button>
+    </div>
+    <span class="dock-divider dock-divider-hints" aria-hidden="true"></span>
+    <div class="dock-hints" aria-hidden="true">
+      <span><kbd>拖拽</kbd>旋转</span>
+      <span><kbd>滚轮</kbd>缩放</span>
+      <span><kbd>空格</kbd>拆解 / 组装</span>
+    </div>
+  </div>
+
+  <!-- 轻提示 -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 左下角签名 -->
+  <div class="signature" aria-hidden="true">
+    <span class="sig-line"></span>
+    PROCEDURAL 3D · THREE.JS · NO EXTERNAL ASSETS
+  </div>
+
+  <!-- ── 操作指南弹窗 ───────────────────────────── -->
+  <div class="modal" id="guideModal" hidden>
+    <div class="modal-backdrop" data-close="guide"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+      <div class="modal-head">
+        <div>
+          <div class="panel-kicker"><i></i>INTERACTION GUIDE</div>
+          <h2 id="guideTitle">操作指南</h2>
+        </div>
+        <button class="modal-close" data-close="guide" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="guide-grid">
+        <div class="guide-item">
+          <span class="guide-num">01</span>
+          <div><h3>拖拽旋转视角</h3><p>按住鼠标左键拖动，围绕机身 360° 观察；滚轮或双指捏合缩放。</p></div>
+          <span class="guide-keys"><kbd>LMB</kbd><kbd>SCROLL</kbd></span>
+        </div>
+        <div class="guide-item">
+          <span class="guide-num">02</span>
+          <div><h3>点击部件拆解</h3><p>点击机身任意部件，整机进入爆炸拆解，镜头自动推向该部件并高亮。</p></div>
+          <span class="guide-keys"><kbd>CLICK</kbd></span>
+        </div>
+        <div class="guide-item">
+          <span class="guide-num">03</span>
+          <div><h3>查看部件参数</h3><p>右侧面板展示部件参数、材质与拆解说明；左侧清单可快速跳转。</p></div>
+          <span class="guide-keys"><kbd>LIST</kbd></span>
+        </div>
+        <div class="guide-item">
+          <span class="guide-num">04</span>
+          <div><h3>拆解 / 组装</h3><p>底部按钮或空格键，在所有部件归位与完全拆解之间切换。</p></div>
+          <span class="guide-keys"><kbd>SPACE</kbd></span>
+        </div>
+        <div class="guide-item">
+          <span class="guide-num">05</span>
+          <div><h3>标注与自动视角</h3><p>开启标注查看全部部件名称与关键参数；自动视角会在选中时转向最佳观察角度。</p></div>
+          <span class="guide-keys"><kbd>L</kbd><kbd>AUTO</kbd></span>
+        </div>
+        <div class="guide-item">
+          <span class="guide-num">06</span>
+          <div><h3>快捷键</h3><p>R 复位视角 · L 标注开关 · F 全屏 · ESC 关闭弹窗 / 取消选中。</p></div>
+          <span class="guide-keys"><kbd>R</kbd><kbd>F</kbd><kbd>ESC</kbd></span>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="modal-note">所有几何体与贴图均由代码实时生成 · 不含任何外部 3D 模型或图片资源</span>
+        <button class="modal-primary" data-close="guide" type="button">开始探索</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 启动加载层 ─────────────────────────────── -->
+  <div class="boot" id="boot">
+    <div class="boot-inner">
+      <div class="boot-lens" aria-hidden="true">
+        <span class="bl-ring bl-r1"></span>
+        <span class="bl-ring bl-r2"></span>
+        <span class="bl-ring bl-r3"></span>
+        <span class="bl-core"></span>
+      </div>
+      <div class="boot-brand">DJI <b>OSMO ACTION 4</b></div>
+      <div class="boot-title">3D TEARDOWN LAB</div>
+      <div class="boot-bar"><i id="bootBar"></i></div>
+      <div class="boot-status" id="bootStatus">初始化渲染管线…</div>
+    </div>
+  </div>
+
+  <!-- WebGL 失败提示 -->
+  <div class="fallback" id="fallback" hidden>
+    <div class="fallback-card">
+      <h2>无法启动 WebGL</h2>
+      <p>当前浏览器或显卡环境不支持 WebGL。请使用最新版 Chrome / Edge，并确认已开启硬件加速。</p>
+      <p class="fallback-tip">提示：该页面需要 WebGL 2 支持以渲染三维拆解场景。</p>
+    </div>
+  </div>
+</main>
+
+<noscript><div class="noscript">本页面需要启用 JavaScript 才能运行 Three.js 三维场景。</div></noscript>
+
+<script src="js/vendor/three-bundle.min.js"></script>
+<script src="js/lib/textures.js"></script>
+<script src="js/lib/model.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
